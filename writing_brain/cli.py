@@ -32,6 +32,7 @@ INTERNAL_COMMANDS = [
     "render-packy-images",
     "list-projects",
     "list-templates",
+    "usage-stats",
 ]
 
 
@@ -120,6 +121,15 @@ def main() -> int:
         result = collect_public_images(payload, config)
     elif args.command == "render-packy-images":
         result = render_packy_images(payload)
+    elif args.command == "usage-stats":
+        from .usage import query as usage_query
+        result = usage_query(
+            config.data_dir,
+            run_id=str(payload.get("run_id") or ""),
+            date=str(payload.get("date") or ""),
+            month=str(payload.get("month") or ""),
+            year=str(payload.get("year") or ""),
+        )
     else:
         result = build_daily_digest(payload, config)
 

@@ -24,6 +24,7 @@ def call_packy_chat(
     api_key_env_vars: list[str] | None = None,
     base_url_env_vars: list[str] | None = None,
     provider: str = "packyapi",
+    usage_context: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     return call_openai_compatible_chat(
         prompt=prompt,
@@ -37,6 +38,7 @@ def call_packy_chat(
         temperature=temperature,
         max_tokens=max_tokens,
         response_format=response_format,
+        usage_context=usage_context,
     )
 
 
@@ -49,6 +51,7 @@ def call_gemini_native_chat(
     temperature: float = 0.3,
     max_tokens: int = 1800,
     response_json_schema: dict[str, Any] | None = None,
+    usage_context: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     api_key = _resolve_env(["GEMINI_API_KEY", "GOOGLE_API_KEY", "WRITING_BRAIN_GEMINI_API_KEY"])
     model = _resolve_model(default_model, model_env_vars)
@@ -95,13 +98,24 @@ def call_gemini_native_chat(
         reply_text = str(getattr(response, "text", "") or "").strip()
         if parsed_response is not None and not reply_text:
             reply_text = json.dumps(parsed_response, ensure_ascii=False)
-        return {
+        raw_usage = {}
+        usage_metadata = getattr(response, "usage_metadata", None)
+        if usage_metadata:
+            raw_usage = {
+                "prompt_tokens": getattr(usage_metadata, "prompt_token_count", 0) or 0,
+                "completion_tokens": getattr(usage_metadata, "candidates_token_count", 0) or 0,
+                "total_tokens": getattr(usage_metadata, "total_token_count", 0) or 0,
+            }
+        result = {
             "mode": "model_output",
             "reply_text": reply_text,
             "provider": "google_genai",
             "model": model,
             "parsed_response": parsed_response,
+            "usage": raw_usage,
         }
+        _maybe_record_usage(result, usage_context=usage_context)
+        return result
     except Exception as exc:
         return {
             "mode": "prompt_only",
@@ -125,6 +139,7 @@ def call_ppchat_chat(
     model_env_vars: list[str],
     temperature: float = 0.3,
     max_tokens: int = 1800,
+    usage_context: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     return call_openai_compatible_chat(
         prompt=prompt,
@@ -137,6 +152,7 @@ def call_ppchat_chat(
         provider="ppchat",
         temperature=temperature,
         max_tokens=max_tokens,
+        usage_context=usage_context,
     )
 
 
@@ -148,6 +164,7 @@ def call_anthropic_messages(
     model_env_vars: list[str],
     temperature: float = 0.3,
     max_tokens: int = 1800,
+    usage_context: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     api_key = os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLAUDE_API_KEY")
     model = _resolve_model(default_model, model_env_vars)
@@ -224,6 +241,7 @@ def call_anthropic_messages(
             for item in parts
             if isinstance(item, dict) and item.get("type") == "text" and str(item.get("text") or "").strip()
         ).strip()
+        raw_usage = dict(data.get("usage") or {})
     except Exception as exc:
         return {
             "mode": "prompt_only",
@@ -231,12 +249,19 @@ def call_anthropic_messages(
             "provider": "anthropic",
             "model": model,
         }
-    return {
+    result = {
         "mode": "model_output",
         "reply_text": reply,
         "provider": "anthropic",
         "model": model,
+        "usage": {
+            "prompt_tokens": int(raw_usage.get("input_tokens") or 0),
+            "completion_tokens": int(raw_usage.get("output_tokens") or 0),
+            "total_tokens": int(raw_usage.get("input_tokens") or 0) + int(raw_usage.get("output_tokens") or 0),
+        },
     }
+    _maybe_record_usage(result, usage_context=usage_context)
+    return result
 
 
 def call_openai_compatible_chat(
@@ -252,6 +277,7 @@ def call_openai_compatible_chat(
     temperature: float = 0.3,
     max_tokens: int = 1800,
     response_format: dict[str, Any] | None = None,
+    usage_context: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     api_key = _resolve_env(api_key_env_vars)
     model = _resolve_model(default_model, model_env_vars)
@@ -316,6 +342,7 @@ def call_openai_compatible_chat(
                 "model": model,
             }
         reply = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
+        raw_usage = dict(data.get("usage") or {})
     except Exception as exc:
         return {
             "mode": "prompt_only",
@@ -323,12 +350,15 @@ def call_openai_compatible_chat(
             "provider": provider,
             "model": model,
         }
-    return {
+    result = {
         "mode": "model_output",
         "reply_text": str(reply).strip(),
         "provider": provider,
         "model": model,
+        "usage": raw_usage,
     }
+    _maybe_record_usage(result, usage_context=usage_context)
+    return result
 
 
 def normalize_base_url(raw: str) -> str:
@@ -385,3 +415,36 @@ def _resolve_env(names: list[str]) -> str:
         if value and value.strip():
             return value.strip()
     return ""
+
+
+def _maybe_record_usage(result: dict[str, Any], *, usage_context: dict[str, str] | None = None) -> None:
+    ctx = usage_context
+    if not ctx:
+        try:
+            from .usage import get_current_context
+            ctx = get_current_context()
+        except Exception:
+            pass
+    if not ctx:
+        return
+    data_dir = ctx.get("data_dir", "")
+    if not data_dir:
+        return
+    usage = dict(result.get("usage") or {})
+    if not usage:
+        return
+    try:
+        from .usage import record
+        caller = ctx.get("caller", "") or ctx.get("caller_prefix", "")
+        record(
+            data_dir,
+            run_id=ctx.get("run_id", ""),
+            provider=str(result.get("provider") or ""),
+            model=str(result.get("model") or ""),
+            caller=caller,
+            prompt_tokens=int(usage.get("prompt_tokens") or 0),
+            completion_tokens=int(usage.get("completion_tokens") or 0),
+            total_tokens=int(usage.get("total_tokens") or 0),
+        )
+    except Exception:
+        pass

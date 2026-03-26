@@ -73,6 +73,10 @@ class AppConfig:
     def preferences_dir(self) -> Path:
         return self.data_dir / "preferences"
 
+    @property
+    def usage_dir(self) -> Path:
+        return self.data_dir / "usage"
+
 
 def load_config(data_dir: Optional[str] = None) -> AppConfig:
     raw = data_dir or os.environ.get("WRITING_BRAIN_DATA_DIR")

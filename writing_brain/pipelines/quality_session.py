@@ -12,6 +12,7 @@ from ..publish import build_publish_pack
 from ..review import build_review_report
 from ..revision import resolve_article_text, write_artifact, write_json
 from ..text import compact_whitespace, count_evidence_signals, filler_count, now_run_id, repeated_paragraph_count, split_paragraphs
+from ..usage import usage_scope
 from ..writer import run_writer_turn
 
 
@@ -21,6 +22,11 @@ ARCHETYPES = ("industry_analysis", "operator_retrospective", "method_breakdown")
 def run_quality_session(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
     ensure_runtime_dirs(config)
     run_id = str(payload.get("run_id") or now_run_id("session"))
+    with usage_scope(config.data_dir, run_id=run_id, caller_prefix="quality_session"):
+        return _run_quality_session_body(payload, config, run_id=run_id)
+
+
+def _run_quality_session_body(payload: dict[str, Any], config: AppConfig, *, run_id: str) -> dict[str, Any]:
     context_pack = dict(payload.get("context_pack") or {})
     if not context_pack:
         context_pack = build_context_pack({**payload, "run_id": run_id}, config)
