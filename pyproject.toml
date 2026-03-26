@@ -5,6 +5,7 @@ description = "A three-role writing system: draft, review, remember."
 requires-python = ">=3.9"
 dependencies = [
   "python-docx>=1.1.0",
+  "Pillow>=10.0.0",
 ]
 
 [project.scripts]

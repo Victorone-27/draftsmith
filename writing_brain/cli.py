@@ -130,8 +130,10 @@ def main() -> int:
             month=str(payload.get("month") or ""),
             year=str(payload.get("year") or ""),
         )
-    else:
+    elif args.command == "daily-digest":
         result = build_daily_digest(payload, config)
+    else:
+        parser.error(f"unknown command: {args.command}")
 
     rendered = json.dumps(result, ensure_ascii=False, indent=2)
     if args.output:

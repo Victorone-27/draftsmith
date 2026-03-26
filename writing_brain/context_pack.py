@@ -73,7 +73,7 @@ def build_context_pack(payload: dict[str, Any], config: AppConfig) -> dict[str, 
     author_preferences = _load_preferences(config)
 
     if not must_cover_points and referenced_claims:
-        must_cover_points = [claim.title for claim in claims[:3]]
+        must_cover_points = [claim.title for claim in referenced_claims[:3]]
 
     memory_notes = []
     if claims:
@@ -255,7 +255,7 @@ def _load_recent_knowledge(config: AppConfig, *, topic: str, platform: str) -> t
         return [], []
     entities: list[dict[str, Any]] = []
     notes: list[str] = []
-    topic_tokens = {token.lower() for token in topic.split() if token.strip()}
+    topic_tokens = {t.lower() for t in extract_terms(topic) if t.strip()}
     for entity in load_knowledge_entities(config.knowledge_entities_dir)[:20]:
         applies_to = entity.get("applies_to") or {}
         entity_platform = str(applies_to.get("platform") or "").lower()
