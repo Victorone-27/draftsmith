@@ -16,7 +16,6 @@ from .publish import build_publish_pack, render_packy_images
 from .release import run_release_cycle
 from .review import build_review_report
 from .session_ops import accept_delivery, build_delivery, continue_session, resolve_exception, start_session
-from .workflow import run_draft_cycle
 from .writer import run_writer_turn
 
 
@@ -26,7 +25,6 @@ INTERNAL_COMMANDS = [
     "memory-ingest",
     "daily-digest",
     "writer-chat",
-    "draft-cycle",
     "release-cycle",
     "build-publish-pack",
     "review-image-pack",
@@ -112,8 +110,6 @@ def main() -> int:
         result = ingest_memory_record(payload, config)
     elif args.command == "writer-chat":
         result = run_writer_turn(payload, config)
-    elif args.command == "draft-cycle":
-        result = run_draft_cycle(payload, config)
     elif args.command == "release-cycle":
         result = run_release_cycle(payload, config)
     elif args.command == "build-publish-pack":

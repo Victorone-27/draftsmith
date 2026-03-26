@@ -143,13 +143,12 @@ draftsmith/
     review.py             # Reviewer: heuristic + model scoring
     memory.py             # Memory: feedback → knowledge entities
     context_pack.py       # Context assembly from data-dir
+    revision.py           # Text resolution & artifact persistence
     publish.py            # Publish pack builder (Word + images)
     image_review.py       # Image package quality gate
     public_images.py      # Public image collection (Wikimedia)
     release.py            # Multi-platform release
     post_review.py        # Post-review delivery pipeline
-    workflow.py           # Legacy draft-cycle (internal/debug)
-    governance.py         # Rotation governance (internal/debug)
     llm.py                # Model call abstraction
   schemas/                # JSON schemas for all contracts
   docs/                   # Architecture docs

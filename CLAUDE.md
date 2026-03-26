@@ -122,7 +122,6 @@ python3 -m writing_brain.cli accept-delivery \
 
 - `build-context-pack`
 - `review-draft`
-- `draft-cycle`（旧版流程，start-session 内部已包含）
 - `release-cycle`
 - `build-publish-pack`
 - `collect-public-images`
