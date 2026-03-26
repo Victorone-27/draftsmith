@@ -1842,7 +1842,8 @@ def _build_argument_check(
     }
     claim_support_gaps = _count_claim_support_gaps(paragraphs)
     signal_total = sum(category_hits.values())
-    ok = signal_total >= 5 and evidence_hits >= 1 and claim_support_gaps <= 1 and coverage_ratio >= 0.6
+    max_gaps = max(1, len(paragraphs) // 4)
+    ok = signal_total >= 5 and evidence_hits >= 1 and claim_support_gaps <= max_gaps and coverage_ratio >= 0.6
     return {
         "signal_total": signal_total,
         "category_hits": category_hits,
@@ -1933,15 +1934,18 @@ def _count_claim_support_gaps(paragraphs: list[str]) -> int:
         normalized = compact_whitespace(paragraph)
         if len(normalized) < 24:
             continue
-        claim_like = any(token in normalized for token in ["不是", "而是", "意味着", "决定", "本质上", "关键", "真正", "危险"])
-        if not claim_like:
+        # Only count paragraphs that START with a claim-like pattern (standalone judgments)
+        claim_start = any(normalized.startswith(token) for token in ["不是", "真正", "本质上", "关键在于", "问题在于"])
+        claim_strong = sum(1 for token in ["不是", "而是", "意味着", "决定", "本质上"] if token in normalized) >= 2
+        if not claim_start and not claim_strong:
             continue
+        # Check current paragraph + next for support signals
         current_or_next = normalized
         if index + 1 < len(paragraphs):
             current_or_next += " " + compact_whitespace(paragraphs[index + 1])
         support_like = any(
             token in current_or_next
-            for token in ["因为", "所以", "比如", "例如", "案例", "场景", "数据", "前提是", "代价是", "结果是"]
+            for token in ["因为", "所以", "比如", "例如", "案例", "场景", "数据", "前提是", "代价是", "结果是", "证明", "说明", "表现为"]
         )
         if not support_like:
             gaps += 1

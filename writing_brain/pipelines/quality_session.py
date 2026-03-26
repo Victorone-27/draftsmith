@@ -122,14 +122,21 @@ def run_quality_session(payload: dict[str, Any], config: AppConfig) -> dict[str,
 
 def continue_session(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
     prior = _load_session_result(payload, config)
+    recompose = bool(payload.get("recompose"))
+    manual_draft = payload.get("manual_draft_text")
+    if manual_draft is None and not recompose:
+        manual_draft = str(payload.get("article_markdown") or prior.get("article_markdown") or "")
     merged = {
         **dict(prior.get("assignment") or {}),
         **dict(prior.get("research_pack") or {}),
         **payload,
         "run_id": str(prior.get("run_id") or payload.get("run_id") or ""),
         "context_pack": dict(payload.get("context_pack") or prior.get("assignment", {}).get("context_pack") or prior.get("context_pack") or {}),
-        "manual_draft_text": str(payload.get("manual_draft_text") or payload.get("article_markdown") or prior.get("article_markdown") or ""),
     }
+    if manual_draft:
+        merged["manual_draft_text"] = manual_draft
+    elif "manual_draft_text" in merged:
+        del merged["manual_draft_text"]
     return run_quality_session(merged, config)
 
 
