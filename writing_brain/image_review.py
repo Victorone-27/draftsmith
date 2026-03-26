@@ -62,6 +62,31 @@ def build_image_review_report(payload: dict[str, Any]) -> dict[str, Any]:
         actions.append("补齐缺失图片后，再重跑 review-image-pack 或 build-publish-pack。")
         score -= min(45, (expected_slots - images_present) * 12)
 
+    # Per-slot missing alerts
+    for slot in slots:
+        if not slot.get("file_present"):
+            filename = str(slot.get("filename") or "")
+            role = str(slot.get("role") or "supporting_visual")
+            source_type = str(slot.get("expected_source_type") or "generated")
+            allowed = list(slot.get("allowed_source_types") or [source_type])
+            fallback_hint = ""
+            if source_type == "public" and "generated" in allowed:
+                fallback_hint = "；公开图搜不到时可 fallback 到 AI 生图"
+            elif source_type == "generated" and "public" in allowed:
+                fallback_hint = "；生图不满意时可替换为公开来源真实图"
+            file_issues.append(
+                _issue(
+                    "slot_missing",
+                    "high",
+                    f"图位 {filename} 缺失",
+                    f"角色={role}，期望来源={source_type}，允许来源={','.join(allowed)}{fallback_hint}",
+                )
+            )
+            if source_type == "public":
+                actions.append(f"为图位 {filename}（{role}）补公开来源图片，或用 render-packy-images fallback 到 AI 生图。")
+            else:
+                actions.append(f"为图位 {filename}（{role}）运行 render-packy-images 生成图片。")
+
     if public_expected and public_present == 0:
         file_issues.append(
             _issue(
