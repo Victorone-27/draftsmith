@@ -163,6 +163,89 @@ class PublishTests(unittest.TestCase):
             self.assertTrue(any("图片素材未补齐" in item["summary"] for item in result["image_review_report"]["top_issues"]))
             self.assertTrue(any("补齐缺失图片" in action for action in result["image_review_report"]["required_actions"]))
 
+    def test_build_publish_pack_uses_image_brief_and_blocks_ai_cover_when_public_preferred(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "image-plans").mkdir()
+            config = AppConfig(data_dir=root)
+            output_dir = root / "out" / "公众号"
+            generated_dir = output_dir / "图片" / "已生成"
+            public_dir = output_dir / "图片" / "公开来源"
+            generated_dir.mkdir(parents=True)
+            public_dir.mkdir(parents=True)
+
+            (generated_dir / "封面.png").write_bytes(MINI_PNG)
+            (generated_dir / "配图-02.png").write_bytes(MINI_PNG)
+            (public_dir / "配图-01.png").write_bytes(MINI_PNG)
+            (output_dir / "图片" / GENERATED_INDEX_FILENAME).write_text(
+                json.dumps(
+                    {
+                        "封面": {"path": str(generated_dir / "封面.png"), "provider": "packyapi", "model": "nano2", "publishable": True, "prompt": "纪实风"},
+                        "配图-02": {"path": str(generated_dir / "配图-02.png"), "provider": "packyapi", "model": "nano2", "publishable": True, "prompt": "概念补位图"},
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            (output_dir / "图片" / PUBLIC_INDEX_FILENAME).write_text(
+                json.dumps(
+                    {
+                        "配图-01": {
+                            "path": str(public_dir / "配图-01.png"),
+                            "title": "Business meeting",
+                            "source_url": "https://commons.wikimedia.org/wiki/File:meeting",
+                            "license": "CC BY-SA 4.0",
+                            "author": "Author One",
+                            "publishable": True,
+                        }
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+
+            result = build_publish_pack(
+                {
+                    "title": "为什么老板总会被通用 Agent 打动",
+                    "topic": "为什么老板总会被通用 Agent 打动",
+                    "platform": "wechat",
+                    "output_dir": str(output_dir),
+                    "image_brief": {
+                        "slots": [
+                            {
+                                "filename": "封面",
+                                "role": "cover_opinion",
+                                "anchor": "老板们被通用 Agent 打动，不是因为它已经最好用，而是因为它展示了结果感。",
+                                "source_priority": ["public", "generated"],
+                            },
+                            {
+                                "filename": "配图-01",
+                                "role": "scene_photo",
+                                "anchor": "企业智能体展示的是流程优化。",
+                                "source_priority": ["public"],
+                            },
+                            {
+                                "filename": "配图-02",
+                                "role": "concept_art",
+                                "anchor": "老板第一眼看到的是结果感。",
+                                "source_priority": ["generated"],
+                            },
+                        ]
+                    },
+                    "article_markdown": (
+                        "# 为什么老板总会被通用 Agent 打动\n\n"
+                        "老板们被通用 Agent 打动，不是因为它今天已经最好用，而是因为它把结果感做成了可演示产品。\n\n"
+                        "企业智能体展示的往往是流程优化。\n\n"
+                        "这意味着老板第一眼看到的是结果感，而不是长期 ROI。"
+                    ),
+                },
+                config,
+            )
+
+            self.assertEqual(result["image_brief"]["slots"][0]["role"], "cover_opinion")
+            self.assertEqual(result["image_review_report"]["decision"], "revise")
+            self.assertIn("authenticity", result["image_review_report"]["blocked_dimensions"])
+
     def test_build_publish_pack_renders_docx_formatting_from_markdown_structure(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

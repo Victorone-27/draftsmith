@@ -221,7 +221,10 @@ def _fetch_slot_image(*, slot: dict[str, str], public_dir: Path, existing_index:
         candidates = _search_commons(candidate_query)
         if not candidates:
             continue
-        chosen = candidates[0]
+        filtered = _filter_relevant_candidates(candidates, slot=slot, query=candidate_query)
+        if not filtered:
+            continue
+        chosen = filtered[0]
         used_query = candidate_query
         break
     if not chosen:
@@ -313,13 +316,15 @@ def _compact_commons_query(query: str) -> str:
 
 def _generic_commons_query(query: str) -> str:
     normalized = str(query or "").lower()
+    if any(token in normalized for token in ["老板", "预算", "企业", "管理", "协同", "流程", "组织", "business", "executive", "meeting", "teamwork"]):
+        return "business leaders round table meeting"
+    if any(token in normalized for token in ["prompt", "提示词", "模型", "人工智能", "ai", "agent", "智能体", "technology"]):
+        return "business meeting technology leaders"
+    if any(token in normalized for token in ["团队", "协作", "工作流", "team", "office"]):
+        return "businesspeople meeting office"
     if any(token in normalized for token in ["漫剧", "动画", "漫画", "视频"]):
-        return "artificial intelligence animation conference"
-    if any(token in normalized for token in ["prompt", "提示词", "模型", "人工智能", "ai"]):
-        return "artificial intelligence conference"
-    if any(token in normalized for token in ["团队", "协作", "工作流"]):
-        return "technology team office"
-    return "artificial intelligence technology"
+        return "animation production studio"
+    return "business office"
 
 
 def _search_commons(query: str) -> list[dict[str, str]]:
@@ -361,6 +366,92 @@ def _search_commons(query: str) -> list[dict[str, str]]:
             }
         )
     return results
+
+
+def _filter_relevant_candidates(candidates: list[dict[str, str]], *, slot: dict[str, str], query: str) -> list[dict[str, str]]:
+    scored: list[tuple[int, dict[str, str]]] = []
+    slot_text = f"{slot.get('filename') or ''} {slot.get('query') or ''} {query}".lower()
+    required_tokens = _required_visual_tokens(slot_text)
+
+    for candidate in candidates:
+        title = str(candidate.get("title") or "").lower()
+        page_url = str(candidate.get("page_url") or "").lower()
+        penalty_terms = [
+            ".pdf",
+            ".webm",
+            "document",
+            "notice",
+            "通知",
+            "方案",
+            "办公室",
+            "page ",
+            "page-",
+            "diagram",
+            "chart",
+            "map",
+            "logo",
+            "icon",
+            "text",
+            "scan",
+            "baseball",
+            "football",
+            "basketball",
+            "soccer",
+            "school",
+            "high school",
+            "university",
+            "students",
+            "symbol",
+            "emblem",
+            "flag",
+            "building",
+            "house",
+            "architecture",
+        ]
+        if any(term in title or term in page_url for term in penalty_terms):
+            continue
+
+        score = 0
+        positive_terms = [
+            ("business", 2),
+            ("office", 2),
+            ("meeting", 2),
+            ("team", 2),
+            ("people", 1),
+            ("computer", 1),
+            ("conference", 1),
+            ("technology", 1),
+            ("artificial intelligence", 2),
+            ("robot", 1),
+            ("business", 2),
+            ("executive", 2),
+            ("manager", 1),
+        ]
+        for term, weight in positive_terms:
+            if term in title:
+                score += weight
+
+        if required_tokens and not any(token in title for token in required_tokens):
+            continue
+        scored.append((score, candidate))
+
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return [item for _, item in scored]
+
+
+def _required_visual_tokens(text: str) -> list[str]:
+    mapping = [
+        (["老板", "预算", "企业", "管理"], ["business", "office", "meeting", "企业", "管理", "商务"]),
+        (["agent", "ai", "人工智能", "智能体"], ["technology", "artificial intelligence", "robot", "computer", "人工智能", "ai", "智能"]),
+        (["团队", "协作", "跨部门", "组织"], ["team", "meeting", "office", "团队", "协作", "组织"]),
+    ]
+    tokens: list[str] = []
+    for triggers, values in mapping:
+        if any(trigger.lower() in text for trigger in triggers):
+            for value in values:
+                if value not in tokens:
+                    tokens.append(value)
+    return tokens
 
 
 def _request_json(url: str) -> dict[str, Any]:

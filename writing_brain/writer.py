@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -86,6 +87,23 @@ def _build_writer_prompt(
         f"- {item.get('name')}: {item.get('reason')}"
         for item in context_pack.get("preferred_structures", [])[:2]
     ) or "- 暂无明确结构建议"
+    format_rules = "\n".join(
+        [
+            "- 按公众号母稿排版输出，不要写“标题：”“导语：”“正文：”“标题备选”这类标签。",
+            "- 第一行只写一个 Markdown H1 标题，格式类似 `# 文章标题`。",
+            "- 标题后直接进入正文，不要加 `---` 分割线，不要单独写导语标签。",
+            "- 默认整篇只用自然段推进，不要写 `**1.**`、`**2.**` 这种硬编号小标题，也尽量不要写 `##` 小标题。",
+            "- 只有在信息密度明显过高、自然分段无法承载时，才允许 1 到 2 个 `##` 小标题。",
+            "- 段落保持简短，尽量贴近作者现有母稿的排版节奏。",
+        ]
+    )
+    length_rules = "\n".join(
+        [
+            "- 如果是公众号观点母稿，默认写到能把判断、论证和边界讲透，不要为了克制而过度收短。",
+            "- 在用户没有明确要求短文时，公众号观点母稿通常不少于 1400 字符。",
+            "- 必须覆盖点没有讲透前，不要提前收尾。",
+        ]
+    )
     knowledge = "\n".join(
         f"- [{item.get('entity_type')}] {item.get('statement')}"
         for item in context_pack.get("memory_knowledge", [])[:6]
@@ -120,13 +138,19 @@ def _build_writer_prompt(
 必须覆盖：
 {must_cover}
 
-可用核心判断：
+历史观点参考（仅在与当前主题直接相关时才可复用）：
 {claims}
 
 推荐结构：
 {structures}
 
-长期记忆知识体：
+排版规则：
+{format_rules}
+
+长度规则：
+{length_rules}
+
+长期记忆知识体（只在直接相关时使用）：
 {knowledge}
 
 风格规则：
@@ -151,7 +175,7 @@ reviewer 修改要求：
 {rewrite_actions}
 
 要求：
-1. 不要忽略长期记忆知识体。
+1. 历史观点和长期记忆只能作为辅助参考；如果和当前主题不直接相关，就忽略，不要硬塞进正文。
 2. 不要写空泛正确废话。
 3. 需要区分判断、论据、结构建议。
 4. 如果是 brainstorm，就先帮作者收束思路。
@@ -247,7 +271,7 @@ def _call_packy_api(prompt: str, api_key: str) -> dict[str, str]:
     )
     return {
         "mode": str(result.get("mode") or "prompt_only"),
-        "reply_text": str(result.get("reply_text") or ""),
+        "reply_text": _normalize_article_output_text(str(result.get("reply_text") or "")),
         "provider": str(result.get("provider") or "packyapi"),
         "model": str(result.get("model") or DEFAULT_DRAFT_MODEL),
     }
@@ -267,7 +291,7 @@ def _call_gemini_revise_model(prompt: str) -> dict[str, str]:
         )
         return {
             "mode": str(result.get("mode") or "prompt_only"),
-            "reply_text": str(result.get("reply_text") or ""),
+            "reply_text": _normalize_article_output_text(str(result.get("reply_text") or "")),
             "provider": str(result.get("provider") or "packyapi"),
             "model": str(result.get("model") or DEFAULT_GEMINI_REVISE_MODEL),
         }
@@ -319,7 +343,7 @@ def _call_claude_revise_model(prompt: str) -> dict[str, str]:
     )
     return {
         "mode": str(result.get("mode") or "prompt_only"),
-        "reply_text": str(result.get("reply_text") or ""),
+        "reply_text": _normalize_article_output_text(str(result.get("reply_text") or "")),
         "provider": str(result.get("provider") or "ppchat"),
         "model": str(result.get("model") or DEFAULT_CLAUDE_REVISE_MODEL),
     }
@@ -341,7 +365,7 @@ def _call_gpt_revise_model(prompt: str) -> dict[str, str]:
     )
     return {
         "mode": str(result.get("mode") or "prompt_only"),
-        "reply_text": str(result.get("reply_text") or ""),
+        "reply_text": _normalize_article_output_text(str(result.get("reply_text") or "")),
         "provider": str(result.get("provider") or "ppchat"),
         "model": str(result.get("model") or DEFAULT_GPT_REVISE_MODEL),
     }
@@ -408,7 +432,7 @@ def _resolve_draft_max_tokens() -> int:
 
 
 def _validate_revise_output(result: dict[str, str], *, revision_owner: str, current_draft: str) -> dict[str, str]:
-    text = _normalize_revise_output_text(str(result.get("reply_text") or ""))
+    text = _normalize_article_output_text(str(result.get("reply_text") or ""))
     owner = revision_owner.strip().lower() or "gemini"
     if owner != "gemini":
         return {**result, "reply_text": text}
@@ -423,7 +447,7 @@ def _validate_revise_output(result: dict[str, str], *, revision_owner: str, curr
     }
 
 
-def _normalize_revise_output_text(raw_text: str) -> str:
+def _normalize_article_output_text(raw_text: str) -> str:
     text = str(raw_text or "").strip()
     if not text:
         return ""
@@ -461,18 +485,58 @@ def _normalize_revise_output_text(raw_text: str) -> str:
         "按reviewer",
         "我根据",
     )
+    metadata_headings = {"## 正文", "正文", "## 标题备选", "标题备选"}
     for paragraph in paragraphs:
         normalized = paragraph.strip()
+        compact = normalized.replace(" ", "")
+        normalized = _normalize_heading_paragraph(normalized)
+        if not normalized:
+            continue
         compact = normalized.replace(" ", "")
         if skipping_meta:
             if compact in {"***", "---", "———"}:
                 continue
             if any(compact.startswith(prefix) for prefix in meta_prefixes):
                 continue
+            if normalized in metadata_headings:
+                continue
             skipping_meta = False
+        if normalized in metadata_headings or normalized in {"**导语：**", "导语：", "导语:", "## 导语"}:
+            continue
         stripped.append(normalized)
     if stripped:
         return "\n\n".join(stripped).strip()
+    return text
+
+
+def _normalize_heading_paragraph(paragraph: str) -> str:
+    text = paragraph.strip()
+    if not text:
+        return ""
+
+    title_patterns = [
+        r"^\*\*标题[:：]\*\*\s*(.+?)\s*\*\*$",
+        r"^\*\*标题[:：]\s*(.+?)\*\*$",
+        r"^#\s*标题[:：]\s*(.+)$",
+        r"^标题[:：]\s*(.+)$",
+    ]
+    for pattern in title_patterns:
+        match = re.match(pattern, text)
+        if match:
+            title = match.group(1).strip().strip("*").strip()
+            if title:
+                return f"# {title}"
+
+    intro_patterns = [
+        r"^\*\*导语[:：]\*\*\s*(.+)$",
+        r"^\*\*导语[:：]\s*(.+)\*\*$",
+        r"^导语[:：]\s*(.+)$",
+    ]
+    for pattern in intro_patterns:
+        match = re.match(pattern, text)
+        if match:
+            return match.group(1).strip().strip("*").strip()
+
     return text
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -56,6 +57,80 @@ def _mock_search(query: str) -> list[dict[str, str]]:
 
 
 class PublicImageTests(unittest.TestCase):
+    def test_image_review_flags_photo_style_prompts_under_generated_infographic_strategy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_dir = Path(tmp) / "out" / "公众号"
+            image_dir = output_dir / "图片"
+            generated_dir = image_dir / "已生成"
+            generated_dir.mkdir(parents=True, exist_ok=True)
+
+            placements = {
+                "cover": {"path": "已生成/封面.png", "caption": "封面图", "source_type": "generated"},
+                "inline": [
+                    {
+                        "path": "已生成/配图-01.png",
+                        "caption": "组织关系变化",
+                        "after_contains": "真正变化的不是工具界面，而是组织里的责任关系。",
+                        "source_type": "generated",
+                    },
+                    {
+                        "path": "已生成/配图-02.png",
+                        "caption": "预算路径变化",
+                        "after_contains": "预算审批和执行路径会被重新切开。",
+                        "source_type": "generated",
+                    },
+                ],
+            }
+            (image_dir / "插图位置.json").write_text(json.dumps(placements, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            tasks = [
+                {
+                    "filename": "封面",
+                    "source_type": "generated",
+                    "prompt": "中国语境，真实纪实摄影，新闻图片或杂志专题封面质感，真实人物或真实场景，自然光。",
+                },
+                {
+                    "filename": "配图-01",
+                    "source_type": "generated",
+                    "prompt": "围绕组织责任变化生成配图，中国语境，真实纪实摄影，杂志专题图片质感，自然光。",
+                },
+                {
+                    "filename": "配图-02",
+                    "source_type": "generated",
+                    "prompt": "围绕预算路径变化生成配图，中国语境，真实纪实摄影，真实场景，不要海报感。",
+                },
+            ]
+            (image_dir / "生成任务.json").write_text(json.dumps(tasks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            (image_dir / GENERATED_INDEX_FILENAME).write_text(
+                '{\n'
+                f'  "封面": {{"path": "{generated_dir / "封面.png"}", "provider": "packyapi", "model": "nano2", "prompt": "中国语境，真实纪实摄影，新闻图片或杂志专题封面质感，真实人物或真实场景，自然光。", "publishable": true}},\n'
+                f'  "配图-01": {{"path": "{generated_dir / "配图-01.png"}", "provider": "packyapi", "model": "nano2", "prompt": "围绕组织责任变化生成配图，中国语境，真实纪实摄影，杂志专题图片质感，自然光。", "publishable": true}},\n'
+                f'  "配图-02": {{"path": "{generated_dir / "配图-02.png"}", "provider": "packyapi", "model": "nano2", "prompt": "围绕预算路径变化生成配图，中国语境，真实纪实摄影，真实场景，不要海报感。", "publishable": true}}\n'
+                '}\n',
+                encoding="utf-8",
+            )
+            (image_dir / "图片与数据来源.md").write_text("# 图片与数据来源\n", encoding="utf-8")
+            (output_dir / "公众号版-可直接发布-纯文本可复制.docx").write_bytes(b"")
+            (output_dir / "公众号版-图文可发布.docx").write_bytes(b"")
+            for name in ["封面", "配图-01", "配图-02"]:
+                (generated_dir / f"{name}.png").write_bytes(MINI_PNG)
+
+            report = build_image_review_report(
+                {
+                    "output_dir": str(output_dir),
+                    "platform": "wechat",
+                    "article_markdown": (
+                        "# 组织接口正在被重写\n\n"
+                        "真正变化的不是工具界面，而是组织里的责任关系。\n\n"
+                        "预算审批和执行路径会被重新切开。\n\n"
+                        "这篇文章讨论的是责任、路径和关系，不是现场照片。"
+                    ),
+                }
+            )
+
+            self.assertEqual(report["decision"], "revise")
+            self.assertEqual(report["expanded_checks"]["content_alignment"]["generated_prompt_mismatch_count"], 3)
+            self.assertTrue(any(item["issue_type"] == "generated_prompt_mismatch" for item in report["top_issues"]))
+
     def test_public_search_query_is_compact(self) -> None:
         query = _public_search_query(
             topic="AI漫剧量产工作流：如何用产品化思维对抗生成的不确定性",

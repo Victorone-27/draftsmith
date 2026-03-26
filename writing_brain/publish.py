@@ -69,6 +69,8 @@ class ImageSlot:
     aspect_ratio: str
     image_size: str
     source_type: str
+    role: str = "supporting_visual"
+    allowed_source_types: tuple[str, ...] = ("generated",)
     after_contains: str | None = None
 
 
@@ -105,20 +107,33 @@ def build_publish_pack(payload: dict[str, Any], config: AppConfig) -> dict[str, 
     generated_dir.mkdir(parents=True, exist_ok=True)
     public_dir.mkdir(parents=True, exist_ok=True)
 
-    image_plan = _select_image_plan(config, payload, context_pack)
-    slots = _build_image_slots(
-        title=title,
-        topic=topic or title,
-        article_markdown=article_markdown,
-        platform=platform,
-        image_count=image_count,
-        image_plan_body=image_plan.body if image_plan else "",
-    )
+    image_plan = _select_image_plan(config, payload, context_pack, article_markdown=article_markdown)
+    image_brief = dict(payload.get("image_brief") or {})
+    if image_brief.get("slots"):
+        slots = _build_image_slots_from_brief(
+            image_brief=image_brief,
+            title=title,
+            topic=topic or title,
+            article_markdown=article_markdown,
+            platform=platform,
+        )
+    else:
+        slots = _build_image_slots(
+            title=title,
+            topic=topic or title,
+            article_markdown=article_markdown,
+            platform=platform,
+            image_count=image_count,
+            image_plan_name=image_plan.title if image_plan else "",
+            image_plan_body=image_plan.body if image_plan else "",
+        )
 
     tasks = [
         {
             "filename": slot.filename,
             "source_type": slot.source_type,
+            "role": slot.role,
+            "allowed_source_types": list(slot.allowed_source_types),
             "aspect_ratio": slot.aspect_ratio,
             "image_size": slot.image_size,
             "prompt": slot.prompt,
@@ -170,6 +185,7 @@ def build_publish_pack(payload: dict[str, Any], config: AppConfig) -> dict[str, 
         }
         if image_plan
         else None,
+        "image_brief": image_brief or None,
         "artifact_refs": [
             str(tasks_path),
             str(placements_path),
@@ -204,6 +220,55 @@ def build_publish_pack(payload: dict[str, Any], config: AppConfig) -> dict[str, 
         dict.fromkeys([*review_actions, *result["recommended_next_actions"]])
     )
     return result
+
+
+def _build_image_slots_from_brief(
+    *,
+    image_brief: dict[str, Any],
+    title: str,
+    topic: str,
+    article_markdown: str,
+    platform: str,
+) -> list[ImageSlot]:
+    paragraphs = [para for para in split_paragraphs(article_markdown) if not para.startswith("#")]
+    fallback_anchors = _pick_anchor_paragraphs(paragraphs, max(1, len(image_brief.get("slots") or [])))
+    slots: list[ImageSlot] = []
+    for index, raw_slot in enumerate(image_brief.get("slots") or []):
+        if not isinstance(raw_slot, dict):
+            continue
+        filename = str(raw_slot.get("filename") or ("封面" if index == 0 else f"配图-{index:02d}")).strip()
+        role = str(raw_slot.get("role") or ("cover_opinion" if index == 0 else "supporting_visual")).strip()
+        allowed_raw = [str(item).strip().lower() for item in raw_slot.get("allowed_source_types") or [] if str(item).strip()]
+        if not allowed_raw:
+            allowed_raw = [str(item).strip().lower() for item in raw_slot.get("source_priority") or [] if str(item).strip()]
+        if not allowed_raw:
+            allowed_raw = ["generated"] if index == 0 else ["public", "generated"]
+        allowed = tuple(dict.fromkeys(item for item in allowed_raw if item in {"generated", "public"})) or ("generated",)
+        primary_source_type = allowed[0]
+        anchor = str(raw_slot.get("anchor") or (fallback_anchors[min(index, len(fallback_anchors) - 1)] if fallback_anchors else topic)).strip()
+        caption = f"封面图：{compact_whitespace(title)}" if index == 0 else _caption_from_paragraph(anchor)
+        prompt = _slot_prompt(
+            topic=topic,
+            snippet=anchor,
+            style_hint="真实编辑感，避免海报感",
+            source_type=primary_source_type,
+        )
+        aspect_ratio = "16:9" if index == 0 else ("4:3" if role != "product_screenshot" else "16:9")
+        image_size = "2K" if index == 0 else "1K"
+        slots.append(
+            ImageSlot(
+                filename=filename,
+                caption=caption,
+                prompt=prompt,
+                aspect_ratio=aspect_ratio,
+                image_size=image_size,
+                source_type=primary_source_type,
+                role=role,
+                allowed_source_types=allowed,
+                after_contains=anchor[:80] if index > 0 else None,
+            )
+        )
+    return slots
 
 
 def render_packy_images(payload: dict[str, Any]) -> dict[str, Any]:
@@ -355,15 +420,22 @@ def _resolve_output_dir(payload: dict[str, Any], config: AppConfig, *, platform:
     return path
 
 
-def _select_image_plan(config: AppConfig, payload: dict[str, Any], context_pack: dict[str, Any]):
+def _select_image_plan(config: AppConfig, payload: dict[str, Any], context_pack: dict[str, Any], *, article_markdown: str):
     query_terms = extract_terms(
         str(payload.get("title") or ""),
         str(payload.get("topic") or context_pack.get("topic") or ""),
         str(payload.get("platform") or context_pack.get("platform") or ""),
         *[str(item) for item in context_pack.get("must_cover_points") or []],
     )
-    plans = rank_items(load_markdown_items(config.image_plans_dir, "id", "name"), query_terms)[:1]
-    return plans[0] if plans else None
+    plans = rank_items(load_markdown_items(config.image_plans_dir, "id", "name"), query_terms)
+    if not plans:
+        return None
+    platform = str(payload.get("platform") or context_pack.get("platform") or "").strip().lower()
+    if platform == "wechat" and _looks_like_opinion_article(str(payload.get("title") or ""), article_markdown):
+        for plan in plans:
+            if "观点型" in plan.title:
+                return plan
+    return plans[0]
 
 
 def _build_image_slots(
@@ -373,12 +445,13 @@ def _build_image_slots(
     article_markdown: str,
     platform: str,
     image_count: int,
+    image_plan_name: str,
     image_plan_body: str,
 ) -> list[ImageSlot]:
     paragraphs = [para for para in split_paragraphs(article_markdown) if not para.startswith("#")]
     anchors = _pick_anchor_paragraphs(paragraphs, image_count)
     style_hint = _style_hint(image_plan_body)
-    source_types = _slot_source_types(image_count)
+    source_types = _slot_source_types(image_count, image_plan_name=image_plan_name, image_plan_body=image_plan_body)
     slots: list[ImageSlot] = [
         ImageSlot(
             filename="封面",
@@ -390,6 +463,8 @@ def _build_image_slots(
             aspect_ratio="16:9",
             image_size="2K",
             source_type="generated",
+            role="cover_opinion",
+            allowed_source_types=("generated",),
         )
     ]
     for idx, paragraph in enumerate(anchors, 1):
@@ -408,6 +483,8 @@ def _build_image_slots(
                 aspect_ratio="4:3",
                 image_size="1K",
                 source_type=source_type,
+                role="supporting_visual",
+                allowed_source_types=(source_type,),
                 after_contains=snippet[:80],
             )
         )
@@ -437,6 +514,8 @@ def _build_placements(slots: list[ImageSlot]) -> dict[str, Any]:
             "caption": slot.caption,
             "after_contains": slot.after_contains or "",
             "source_type": slot.source_type,
+            "role": slot.role,
+            "allowed_source_types": list(slot.allowed_source_types),
         }
         for slot in slots[1:]
     ]
@@ -445,6 +524,8 @@ def _build_placements(slots: list[ImageSlot]) -> dict[str, Any]:
             "path": _slot_relative_path(cover),
             "caption": cover.caption,
             "source_type": cover.source_type,
+            "role": cover.role,
+            "allowed_source_types": list(cover.allowed_source_types),
         },
         "inline": inline,
     }
@@ -454,8 +535,10 @@ def _build_source_markdown(*, slots: list[ImageSlot], payload: dict[str, Any], i
     public_refs = list(payload.get("public_image_refs") or [])
     lines = ["# 图片与数据来源", ""]
     for slot in slots:
-        if slot.source_type == "generated":
+        if slot.source_type == "generated" and "public" not in slot.allowed_source_types:
             lines.append(f"- {slot.filename}：使用 `packyapi` 图片接口生成")
+        elif "public" in slot.allowed_source_types and "generated" in slot.allowed_source_types:
+            lines.append(f"- {slot.filename}：优先使用公开真实图片，如无合适素材再考虑生成图补位")
         else:
             lines.append(f"- {slot.filename}：建议使用公开渠道真实图片，来源待补")
     if public_refs:
@@ -486,7 +569,7 @@ def _build_source_markdown(*, slots: list[ImageSlot], payload: dict[str, Any], i
 
 def _build_public_image_leads(slots: list[ImageSlot]) -> str:
     lines = ["# 公开图片线索", ""]
-    public_slots = [slot for slot in slots if slot.source_type == "public"]
+    public_slots = [slot for slot in slots if "public" in slot.allowed_source_types]
     if not public_slots:
         lines.append("- 当前批次没有公共图源槽位。")
         return "\n".join(lines)
@@ -498,6 +581,7 @@ def _build_public_image_leads(slots: list[ImageSlot]) -> str:
             [
                 f"## {slot.filename}",
                 f"- 用途：{slot.caption}",
+                f"- 图位职责：{slot.role}",
                 f"- 公开渠道搜索词：{slot.prompt}",
                 f"- 建议来源：官方博客、官方新闻稿、Wikimedia Commons、公司 newsroom、产品发布页面",
                 "- 待补字段：图片 URL、来源标题、许可/使用说明、下载后本地路径",
@@ -688,10 +772,16 @@ def _existing_image_count(slots: list[ImageSlot], image_dirs: dict[str, Path]) -
     count = 0
     for slot in slots:
         for ext in ("png", "jpg", "jpeg", "webp"):
-            root = image_dirs["generated"] if slot.source_type == "generated" else image_dirs["public"]
-            if (root / f"{slot.filename}.{ext}").exists():
-                count += 1
-                break
+            roots = []
+            for source_type in slot.allowed_source_types:
+                roots.append(image_dirs["generated"] if source_type == "generated" else image_dirs["public"])
+            for root in roots:
+                if (root / f"{slot.filename}.{ext}").exists():
+                    count += 1
+                    break
+            else:
+                continue
+            break
     return count
 
 
@@ -729,11 +819,23 @@ def _caption_from_paragraph(paragraph: str) -> str:
     return f"{snippet}。"
 
 
-def _slot_source_types(image_count: int) -> list[str]:
+def _slot_source_types(image_count: int, *, image_plan_name: str, image_plan_body: str) -> list[str]:
+    combined = f"{image_plan_name}\n{image_plan_body}"
+    if any(token in combined for token in ["纯信息图", "纯结构图", "全生成", "全信息图"]):
+        return ["generated"] * image_count
     if image_count <= 3:
         return ["public", "generated", "public"]
     sequence = ["public", "generated", "public", "generated", "public"]
     return sequence[:image_count]
+
+
+def _looks_like_opinion_article(title: str, article_markdown: str) -> bool:
+    combined = f"{title}\n{article_markdown}"
+    opinion_markers = ["为什么", "不是", "而是", "我越来越觉得", "我越来越认同", "真正", "本质上", "更像是"]
+    procedural_markers = ["步骤", "方法", "怎么做", "实操", "教程", "清单", "复盘", "第一", "第二", "第三"]
+    opinion_score = sum(1 for marker in opinion_markers if marker in combined)
+    procedural_score = sum(1 for marker in procedural_markers if marker in combined)
+    return opinion_score >= procedural_score
 
 
 def _slot_prompt(*, topic: str, snippet: str, style_hint: str, source_type: str) -> str:
@@ -747,39 +849,19 @@ def _slot_prompt(*, topic: str, snippet: str, style_hint: str, source_type: str)
 
 def _public_search_query(*, topic: str, snippet: str) -> str:
     combined = f"{topic} {snippet}"
-    keywords: list[str] = []
-    for token in [
-        "AI",
-        "人工智能",
-        "漫剧",
-        "动画",
-        "漫画",
-        "视频",
-        "工作流",
-        "内容生产",
-        "模型",
-        "Prompt",
-        "提示词",
-        "角色",
-        "场景",
-        "团队",
-        "协作",
-        "工业化",
-    ]:
-        if token.lower() in combined.lower() and token not in keywords:
-            keywords.append(token)
+    normalized = combined.lower()
 
-    short_topic = _compact_public_query_fragment(topic, limit=14)
-    short_snippet = _compact_public_query_fragment(snippet, limit=14)
-    if short_topic and short_topic not in keywords:
-        keywords.insert(0, short_topic)
-    if short_snippet and short_snippet not in keywords:
-        keywords.append(short_snippet)
+    if any(token in normalized for token in ["老板", "企业", "预算", "管理", "协同", "流程", "组织"]):
+        return "business meeting executives office teamwork"
+    if any(token in normalized for token in ["agent", "ai", "人工智能", "模型", "prompt", "智能体"]):
+        return "AI 人工智能 会议 现场 商务"
+    if any(token in normalized for token in ["团队", "协作", "办公室", "会议"]):
+        return "technology team office meeting"
 
-    suffix = "真实照片 会议 现场" if any(token in combined for token in ["模型", "AI", "Prompt", "提示词"]) else "真实照片 团队 现场"
-    query_parts = [item for item in keywords[:4] if item]
-    query = " ".join([*query_parts, suffix]).strip()
-    return query[:72]
+    short_topic = _compact_public_query_fragment(topic, limit=12)
+    if short_topic:
+        return f"{short_topic} 商务 团队 会议 真实照片"[:72]
+    return "business office teamwork meeting"
 
 
 def _compact_public_query_fragment(text: str, *, limit: int) -> str:
@@ -805,6 +887,11 @@ def _resolve_slot_image_path(raw_path: str, image_dirs: dict[str, Path]) -> Path
     stem = path.stem
     for ext in ("png", "jpg", "jpeg", "webp"):
         candidate = root / f"{stem}.{ext}"
+        if candidate.exists():
+            return candidate
+    alternate_root = image_dirs["public"] if root == image_dirs["generated"] else image_dirs["generated"]
+    for ext in ("png", "jpg", "jpeg", "webp"):
+        candidate = alternate_root / f"{stem}.{ext}"
         if candidate.exists():
             return candidate
     return direct

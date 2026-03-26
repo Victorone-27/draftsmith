@@ -90,18 +90,29 @@ python3 -m writing_brain.cli list-projects --data-dir ~/Documents/文稿/写作�
 # 列出模板
 python3 -m writing_brain.cli list-templates --data-dir ~/Documents/文稿/写作系统
 
-# 启动一轮完整写作会话
+# 启动一轮质量驱动写作会话（v2 主入口）
+# 内部流程：assignment → research_pack → diagnosis → blueprint → compose → quality_evaluation → image_brief → delivery_manifest
 python3 -m writing_brain.cli start-session \
   --data-dir ~/Documents/文稿/写作系统 \
   --project {slug} \
-  --input '{"platform":"wechat","auto_revise":true}'
+  --input '{"platform":"wechat","user_goal":"写一篇公众号观点文章"}'
+
+# 基于已有会话继续（补证据、补稿或重建交付物）
+python3 -m writing_brain.cli continue-session \
+  --data-dir ~/Documents/文稿/写作系统 \
+  --input '{"run_id":"...","manual_draft_text":"..."}'
 
 # 系统返回异常后，汇总需要作者裁决的问题
 python3 -m writing_brain.cli resolve-exception \
   --data-dir ~/Documents/文稿/写作系统 \
   --input '{"run_id":"..."}'
 
-# 交付物齐全后做最终验收并入库
+# 对已过质量门的正文重建交付包（图片+Word）
+python3 -m writing_brain.cli build-delivery \
+  --data-dir ~/Documents/文稿/写作系统 \
+  --input '{"run_id":"..."}'
+
+# 交付物齐全后做最终验收并触发 memory 入库
 python3 -m writing_brain.cli accept-delivery \
   --data-dir ~/Documents/文稿/写作系统 \
   --input '{"run_id":"...","human_feedback":{"approved_points":["可直接发布"]}}'
@@ -111,13 +122,39 @@ python3 -m writing_brain.cli accept-delivery \
 
 - `build-context-pack`
 - `review-draft`
-- `draft-cycle`
+- `draft-cycle`（旧版流程，start-session 内部已包含）
 - `release-cycle`
 - `build-publish-pack`
 - `collect-public-images`
 - `render-packy-images`
 - `review-image-pack`
 - `memory-ingest`
+
+## v2 质量闸门
+
+start-session 内部会对正文做五维质量评估，任一维度不通过则阻塞交付：
+
+- argument — 论证链是否有效（因果、对比、例子、推导）
+- voice — 是否去掉模板腔、空泛转折、列表感
+- evidence — 是否有足够证据信号支撑判断
+- platform — 排版是否符合目标平台（母稿体、无标签、无分割线）
+- editor — 综合可发稿水平（总分 ≥ 85、lazy_index ≤ 4、段落 ≥ 4）
+
+质量评估结果在 `session_result.quality_evaluation` 中，`blocked_dimensions` 列出未通过的维度，`repair_strategy` 给出修复建议。
+
+## 会话产物
+
+start-session 会在 `sessions/` 下生成以下文件：
+
+- `{run_id}.session.json` — 完整会话结果（包含所有中间契约）
+- `{run_id}.assignment.json` — 任务契约
+- `{run_id}.research.json` — 研究包
+- `{run_id}.diagnosis.json` — 文章诊断
+- `{run_id}.blueprint.json` — 文章蓝图
+- `{run_id}.quality.json` — 质量评估
+- `{run_id}.image-brief.json` — 配图策略
+- `{run_id}.delivery.json` — 交付清单
+- `{run_id}.draft.md` / `{run_id}.polished.md` — 草稿和润色稿
 
 ## 硬规则
 

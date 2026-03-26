@@ -14,13 +14,27 @@ from writing_brain.session_ops import accept_delivery, resolve_exception, start_
 
 
 class SessionOpsTests(unittest.TestCase):
-    @patch("writing_brain.session_ops.run_draft_cycle")
-    def test_start_session_wraps_draft_cycle_with_safe_defaults(self, mock_run_draft_cycle: object) -> None:
-        mock_run_draft_cycle.return_value = {
+    @patch("writing_brain.session_ops.run_quality_session")
+    def test_start_session_wraps_quality_session_with_safe_defaults(self, mock_run_quality_session: object) -> None:
+        mock_run_quality_session.return_value = {
+            "contract_name": "session_start_result",
+            "contract_version": "v2",
             "run_id": "session_demo",
+            "status": "awaiting_acceptance",
             "final_decision": "pass",
-            "context_pack": {"topic": "AI 写作系统"},
+            "assignment": {"topic": "AI 写作系统"},
+            "quality_evaluation": {
+                "blocked_dimensions": [],
+                "repair_strategy": [],
+                "can_continue_to_delivery": True,
+            },
+            "delivery_manifest": {
+                "status": "completed",
+                "text_delivery": {"status": "passed"},
+                "image_gate": {"status": "passed"},
+            },
             "artifact_refs": ["/tmp/session_demo.cycle.json"],
+            "recommended_next_actions": ["可以进入验收"],
         }
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -29,18 +43,15 @@ class SessionOpsTests(unittest.TestCase):
                 {
                     "topic": "AI 写作系统",
                     "platform": "wechat",
-                    "finalize": True,
-                    "published_confirmed": True,
                 },
                 config,
             )
 
         self.assertEqual(result["status"], "awaiting_acceptance")
-        forwarded_payload = mock_run_draft_cycle.call_args.args[0]
-        self.assertTrue(forwarded_payload["auto_revise"])
+        forwarded_payload = mock_run_quality_session.call_args.args[0]
         self.assertTrue(forwarded_payload["enable_post_review_pipeline"])
-        self.assertFalse(forwarded_payload["finalize"])
-        self.assertFalse(forwarded_payload["published_confirmed"])
+        self.assertEqual(forwarded_payload["post_review_profile"], "debug")
+        self.assertEqual(result["exception_report"]["has_exception"], False)
 
     def test_resolve_exception_reports_review_and_image_issues(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -146,6 +157,51 @@ class SessionOpsTests(unittest.TestCase):
             self.assertEqual(saved["status"], "accepted")
             self.assertEqual(saved["delivery_summary"]["outputs"][0]["platform"], "wechat")
 
+    def test_accept_delivery_accepts_v2_session_result(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = load_config(tmp)
+            result = accept_delivery(
+                {
+                    "session_result": {
+                        "run_id": "session_v2_demo",
+                        "status": "awaiting_acceptance",
+                        "assignment": {
+                            "topic": "AI 写作系统",
+                            "platform": "wechat",
+                            "context_pack": {"topic": "AI 写作系统", "platform": "wechat"},
+                        },
+                        "article_markdown": "# 标题\n\n先给判断。\n\n因为这里有具体例子和场景。\n\n所以这篇稿子可以交付。",
+                        "final_review_report": {
+                            "contract_name": "review_report",
+                            "decision": "pass",
+                            "total_score": 92,
+                            "lazy_index": 1,
+                        },
+                        "quality_evaluation": {
+                            "decision": "pass",
+                            "blocked_dimensions": [],
+                            "can_continue_to_delivery": True,
+                        },
+                        "delivery_manifest": {
+                            "status": "completed",
+                            "text_delivery": {"status": "passed"},
+                            "rich_delivery": {"status": "passed"},
+                            "image_gate": {"status": "passed"},
+                            "artifact_refs": [str(root / "公众号版-可直接发布-纯文本可复制.docx")],
+                        },
+                        "artifact_refs": [str(root / "sessions" / "session_v2_demo.session.json")],
+                    },
+                    "session_summary": "本轮正文和交付物已完成。",
+                    "human_feedback": {"approved_points": ["可以发布"]},
+                },
+                config,
+            )
+
+            self.assertEqual(result["status"], "accepted")
+            self.assertEqual(result["memory_record"]["contract_name"], "memory_ingest_record")
+            self.assertTrue((root / "sessions" / "session_v2_demo.delivery.json").exists())
+
 
 class CliSurfaceTests(unittest.TestCase):
     def test_help_focuses_on_high_level_session_commands(self) -> None:
@@ -158,7 +214,9 @@ class CliSurfaceTests(unittest.TestCase):
         rendered = stdout.getvalue()
         self.assertEqual(cm.exception.code, 0)
         self.assertIn("start-session", rendered)
+        self.assertIn("continue-session", rendered)
         self.assertIn("resolve-exception", rendered)
+        self.assertIn("build-delivery", rendered)
         self.assertIn("accept-delivery", rendered)
         self.assertNotIn("draft-cycle", rendered)
         self.assertNotIn("build-publish-pack", rendered)

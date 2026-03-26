@@ -6,79 +6,110 @@ from typing import Any
 
 from .config import AppConfig
 from .memory import ingest_memory_record
-from .workflow import run_draft_cycle
+from .pipelines.quality_session import (
+    build_delivery as build_delivery_manifest,
+    continue_session as continue_quality_session,
+    maybe_accept_delivery,
+    run_quality_session,
+)
 
 
 def start_session(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
     normalized = {
         **payload,
-        "auto_revise": bool(payload.get("auto_revise", True)),
         "enable_post_review_pipeline": bool(payload.get("enable_post_review_pipeline", True)),
-        "finalize": False,
-        "published_confirmed": False,
+        "post_review_profile": str(payload.get("post_review_profile") or "debug").strip().lower() or "debug",
     }
-    result = run_draft_cycle(normalized, config)
+    result = run_quality_session(normalized, config)
     exception_report = build_exception_report(result)
-    return {
-        "contract_name": "session_start_result",
-        "contract_version": "v1",
-        "run_id": str(result.get("run_id") or ""),
-        "status": "exception" if exception_report["has_exception"] else "awaiting_acceptance",
-        "topic": str((result.get("context_pack") or {}).get("topic") or payload.get("topic") or ""),
-        "cycle_result": result,
-        "exception_report": exception_report,
-        "artifact_refs": list(dict.fromkeys([*(result.get("artifact_refs") or []), *(exception_report.get("artifact_refs") or [])])),
-        "recommended_next_actions": _dedupe_texts(
-            [
-                *exception_report.get("recommended_user_actions", []),
-                *result.get("recommended_next_actions", []),
-            ]
-        ),
-    }
+    result["exception_report"] = exception_report
+    result["artifact_refs"] = list(dict.fromkeys([*(result.get("artifact_refs") or []), *(exception_report.get("artifact_refs") or [])]))
+    result["recommended_next_actions"] = _dedupe_texts(
+        [
+            *exception_report.get("recommended_user_actions", []),
+            *result.get("recommended_next_actions", []),
+        ]
+    )
+    result["status"] = "exception" if exception_report["has_exception"] else "awaiting_acceptance"
+    return result
+
+
+def continue_session(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
+    result = continue_quality_session(payload, config)
+    exception_report = build_exception_report(result)
+    result["exception_report"] = exception_report
+    result["artifact_refs"] = list(dict.fromkeys([*(result.get("artifact_refs") or []), *(exception_report.get("artifact_refs") or [])]))
+    result["recommended_next_actions"] = _dedupe_texts(
+        [
+            *exception_report.get("recommended_user_actions", []),
+            *result.get("recommended_next_actions", []),
+        ]
+    )
+    result["status"] = "exception" if exception_report["has_exception"] else "awaiting_acceptance"
+    return result
+
+
+def build_delivery(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
+    session_result = _load_session_result(payload, config)
+    result = build_delivery_manifest(
+        {
+            **payload,
+            "run_id": str(session_result.get("run_id") or ""),
+            "assignment": dict(session_result.get("assignment") or {}),
+            "context_pack": dict(session_result.get("assignment", {}).get("context_pack") or {}),
+            "article_markdown": str(session_result.get("article_markdown") or session_result.get("final_article_markdown") or ""),
+            "quality_evaluation": dict(session_result.get("quality_evaluation") or {}),
+            "image_brief": dict(session_result.get("image_brief") or {}),
+        },
+        config,
+    )
+    return result
 
 
 def resolve_exception(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
-    cycle_result = _load_cycle_result(payload, config)
-    exception_report = build_exception_report(cycle_result)
+    session_result = _load_session_result(payload, config)
+    exception_report = build_exception_report(session_result)
     return {
         "contract_name": "session_exception_result",
-        "contract_version": "v1",
-        "run_id": str(cycle_result.get("run_id") or ""),
+        "contract_version": "v2",
+        "run_id": str(session_result.get("run_id") or ""),
         "status": "exception" if exception_report["has_exception"] else "clear",
-        "cycle_result": cycle_result,
+        "session_result": session_result,
         "exception_report": exception_report,
-        "artifact_refs": list(dict.fromkeys([*(cycle_result.get("artifact_refs") or []), *(exception_report.get("artifact_refs") or [])])),
+        "artifact_refs": list(dict.fromkeys([*(session_result.get("artifact_refs") or []), *(exception_report.get("artifact_refs") or [])])),
         "recommended_next_actions": list(exception_report.get("recommended_user_actions") or ["当前没有需要你介入的异常。"]),
     }
 
 
 def accept_delivery(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
-    cycle_result = _load_cycle_result(payload, config)
-    exception_report = build_exception_report(cycle_result)
+    session_result = _load_session_result(payload, config)
+    if "quality_evaluation" in session_result or "delivery_manifest" in session_result:
+        return maybe_accept_delivery({**payload, "session_result": session_result}, config)
+
+    exception_report = build_exception_report(session_result)
     if exception_report["has_exception"]:
         return {
             "contract_name": "delivery_acceptance_result",
             "contract_version": "v1",
-            "run_id": str(cycle_result.get("run_id") or ""),
+            "run_id": str(session_result.get("run_id") or ""),
             "status": "blocked",
-            "cycle_result": cycle_result,
+            "cycle_result": session_result,
             "exception_report": exception_report,
             "memory_record": None,
-            "artifact_refs": list(dict.fromkeys([*(cycle_result.get("artifact_refs") or []), *(exception_report.get("artifact_refs") or [])])),
+            "artifact_refs": list(dict.fromkeys([*(session_result.get("artifact_refs") or []), *(exception_report.get("artifact_refs") or [])])),
             "recommended_next_actions": list(exception_report.get("recommended_user_actions") or ["先处理阻塞异常，再做最终验收。"]),
         }
-
-    memory_record = dict(cycle_result.get("memory_record") or {})
+    memory_record = dict(session_result.get("memory_record") or {})
     if not memory_record:
-        context_pack = dict(cycle_result.get("context_pack") or {})
+        context_pack = dict(session_result.get("context_pack") or {})
         memory_record = ingest_memory_record(
             {
-                "run_id": str(cycle_result.get("run_id") or ""),
+                "run_id": str(session_result.get("run_id") or ""),
                 "topic": str(payload.get("topic") or context_pack.get("topic") or "").strip(),
                 "platform": str(payload.get("platform") or context_pack.get("platform") or "wechat").strip(),
-                "final_article_markdown": str(cycle_result.get("final_article_markdown") or "").strip(),
+                "final_article_markdown": str(session_result.get("final_article_markdown") or "").strip(),
                 "session_summary": str(payload.get("session_summary") or "").strip(),
-                "review_report": dict(cycle_result.get("final_review_report") or {}),
+                "review_report": dict(session_result.get("final_review_report") or {}),
                 "context_pack": context_pack,
                 "human_feedback": dict(payload.get("human_feedback") or {}),
                 "hotspot_candidates": [str(item) for item in payload.get("hotspot_candidates") or []],
@@ -89,12 +120,12 @@ def accept_delivery(payload: dict[str, Any], config: AppConfig) -> dict[str, Any
     result = {
         "contract_name": "delivery_acceptance_result",
         "contract_version": "v1",
-        "run_id": str(cycle_result.get("run_id") or ""),
+        "run_id": str(session_result.get("run_id") or ""),
         "status": "accepted",
-        "cycle_result": cycle_result,
-        "delivery_summary": _build_delivery_summary(cycle_result),
+        "cycle_result": session_result,
+        "delivery_summary": _build_delivery_summary(session_result),
         "memory_record": memory_record,
-        "artifact_refs": list(dict.fromkeys([*(cycle_result.get("artifact_refs") or []), *(memory_record.get("archive_refs") or [])])),
+        "artifact_refs": list(dict.fromkeys([*(session_result.get("artifact_refs") or []), *(memory_record.get("archive_refs") or [])])),
         "recommended_next_actions": [
             "最终产出已验收，可以按发布计划分平台上传。",
             "本轮经验已写入 memory，下次会自动复用。",
@@ -106,6 +137,57 @@ def accept_delivery(payload: dict[str, Any], config: AppConfig) -> dict[str, Any
 
 def build_exception_report(cycle_result: dict[str, Any]) -> dict[str, Any]:
     issues: list[dict[str, Any]] = []
+
+    if "quality_evaluation" in cycle_result or "delivery_manifest" in cycle_result:
+        quality = dict(cycle_result.get("quality_evaluation") or {})
+        delivery_manifest = dict(cycle_result.get("delivery_manifest") or {})
+        blocked_dimensions = [str(item) for item in quality.get("blocked_dimensions") or [] if str(item).strip()]
+        if blocked_dimensions:
+            issues.append(
+                _issue(
+                    stage="quality_gate",
+                    severity="high",
+                    summary="正文未通过质量闸门",
+                    evidence="blocked_dimensions=" + ",".join(blocked_dimensions),
+                    actions=list(quality.get("repair_strategy") or ["先修正文质量，再进入交付阶段。"]),
+                    artifact_refs=[str(item) for item in cycle_result.get("artifact_refs") or [] if str(item).endswith(".json")],
+                )
+            )
+        image_gate = dict(delivery_manifest.get("image_gate") or {})
+        if image_gate and str(image_gate.get("status") or "").lower() == "blocked":
+            report = dict(image_gate.get("report") or {})
+            issues.append(
+                _issue(
+                    stage="image_review",
+                    severity="high",
+                    summary="图片交付未通过真实性或相关性闸门",
+                    evidence="image_gate.blocked_reasons=" + ",".join(str(item) for item in image_gate.get("blocked_reasons") or []),
+                    actions=list(report.get("required_actions") or delivery_manifest.get("recommended_next_actions") or ["先补图或替图，再重建交付物。"]),
+                    artifact_refs=[str(item) for item in report.get("artifact_refs") or delivery_manifest.get("artifact_refs") or []],
+                )
+            )
+        text_delivery = dict(delivery_manifest.get("text_delivery") or {})
+        if text_delivery and str(text_delivery.get("status") or "").lower() != "passed":
+            issues.append(
+                _issue(
+                    stage="delivery_artifacts",
+                    severity="high",
+                    summary="缺少纯文本可交付产物",
+                    evidence=f"text_delivery.status={text_delivery.get('status')}",
+                    actions=["重新构建 delivery manifest，直到纯文本交付包产出。"],
+                    artifact_refs=[str(item) for item in delivery_manifest.get("artifact_refs") or []],
+                )
+            )
+        issues = _dedupe_issues(issues)
+        return {
+            "contract_name": "session_exception_report",
+            "contract_version": "v2",
+            "run_id": str(cycle_result.get("run_id") or ""),
+            "has_exception": bool(issues),
+            "issues": issues,
+            "artifact_refs": list(dict.fromkeys([ref for issue in issues for ref in issue.get("artifact_refs", [])])),
+            "recommended_user_actions": _dedupe_texts([action for issue in issues for action in issue.get("actions", [])]),
+        }
 
     final_decision = str(cycle_result.get("final_decision") or "").strip().lower()
     if final_decision and final_decision != "pass":
@@ -160,8 +242,8 @@ def build_exception_report(cycle_result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _load_cycle_result(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
-    direct = dict(payload.get("cycle_result") or {})
+def _load_session_result(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
+    direct = dict(payload.get("session_result") or payload.get("cycle_result") or {})
     if direct:
         return direct
 
@@ -172,11 +254,14 @@ def _load_cycle_result(payload: dict[str, Any], config: AppConfig) -> dict[str, 
 
     run_id = str(payload.get("run_id") or "").strip()
     if run_id:
-        path = config.sessions_dir / f"{run_id}.cycle.json"
-        if not path.exists():
-            raise FileNotFoundError(f"cycle result not found: {path}")
-        return json.loads(path.read_text(encoding="utf-8"))
-    raise ValueError("run_id、session_path 或 cycle_result 至少要提供一个")
+        path = config.sessions_dir / f"{run_id}.session.json"
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+        cycle_path = config.sessions_dir / f"{run_id}.cycle.json"
+        if cycle_path.exists():
+            return json.loads(cycle_path.read_text(encoding="utf-8"))
+        raise FileNotFoundError(f"session result not found: {path}")
+    raise ValueError("run_id、session_path 或 session_result 至少要提供一个")
 
 
 def _collect_delivery_issues(cycle_result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -264,6 +349,20 @@ def _collect_review_artifacts(cycle_result: dict[str, Any]) -> list[str]:
 
 
 def _build_delivery_summary(cycle_result: dict[str, Any]) -> dict[str, Any]:
+    if "delivery_manifest" in cycle_result:
+        delivery_manifest = dict(cycle_result.get("delivery_manifest") or {})
+        return {
+            "final_decision": str(cycle_result.get("final_decision") or ""),
+            "run_id": str(cycle_result.get("run_id") or ""),
+            "outputs": [
+                {
+                    "scope": "single_platform",
+                    "platform": str(cycle_result.get("assignment", {}).get("platform") or ""),
+                    "output_dir": str(((delivery_manifest.get("publish_result") or {}).get("output_dir") or "")),
+                    "artifact_refs": [str(item) for item in delivery_manifest.get("artifact_refs") or []],
+                }
+            ],
+        }
     post_review_result = dict(cycle_result.get("post_review_result") or {})
     outputs: list[dict[str, Any]] = []
     for stage in post_review_result.get("stages") or []:

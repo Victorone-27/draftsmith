@@ -46,7 +46,6 @@ def rank_items(items: list[KnowledgeItem], query_terms: list[str], extra_text: s
                 item.title,
                 str(item.meta),
                 item.body,
-                extra_text,
             ]
         )
         score = keyword_score(haystack, query_terms)

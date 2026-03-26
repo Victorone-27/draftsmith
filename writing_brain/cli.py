@@ -15,7 +15,7 @@ from .public_images import collect_public_images
 from .publish import build_publish_pack, render_packy_images
 from .release import run_release_cycle
 from .review import build_review_report
-from .session_ops import accept_delivery, resolve_exception, start_session
+from .session_ops import accept_delivery, build_delivery, continue_session, resolve_exception, start_session
 from .workflow import run_draft_cycle
 from .writer import run_writer_turn
 
@@ -48,13 +48,15 @@ def main() -> int:
     subparsers = parser.add_subparsers(
         dest="command",
         required=True,
-        metavar="{start-session,resolve-exception,accept-delivery}",
+        metavar="{start-session,continue-session,resolve-exception,build-delivery,accept-delivery}",
         action=_VisibleSubParsersAction,
     )
 
     for name, help_text in [
-        ("start-session", "启动一轮完整写作会话，只返回异常或待验收结果"),
+        ("start-session", "启动一轮质量驱动写作会话，生成诊断、蓝图和交付状态"),
+        ("continue-session", "基于已有会话继续补证据、补稿或重建交付物"),
         ("resolve-exception", "读取会话结果并汇总需要你裁决的异常"),
+        ("build-delivery", "对已过质量门的正文重建交付包"),
         ("accept-delivery", "确认最终交付物并触发 memory 入库"),
     ]:
         subparser = subparsers.add_parser(name, help=help_text)
@@ -94,8 +96,12 @@ def main() -> int:
 
     if args.command == "start-session":
         result = start_session(payload, config)
+    elif args.command == "continue-session":
+        result = continue_session(payload, config)
     elif args.command == "resolve-exception":
         result = resolve_exception(payload, config)
+    elif args.command == "build-delivery":
+        result = build_delivery(payload, config)
     elif args.command == "accept-delivery":
         result = accept_delivery(payload, config)
     elif args.command == "build-context-pack":

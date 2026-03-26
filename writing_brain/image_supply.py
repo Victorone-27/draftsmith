@@ -76,6 +76,8 @@ def _iter_slots(placements: dict[str, Any]) -> list[dict[str, Any]]:
                 "path": str(cover.get("path") or ""),
                 "source_type": str(cover.get("source_type") or _root_to_source_type(str(cover.get("path") or ""))),
                 "caption": str(cover.get("caption") or ""),
+                "role": str(cover.get("role") or "cover_opinion"),
+                "allowed_source_types": list(cover.get("allowed_source_types") or [str(cover.get("source_type") or _root_to_source_type(str(cover.get("path") or "")))]),
             }
         )
     for item in placements.get("inline") or []:
@@ -90,6 +92,8 @@ def _iter_slots(placements: dict[str, Any]) -> list[dict[str, Any]]:
                 "source_type": str(item.get("source_type") or _root_to_source_type(raw_path)),
                 "caption": str(item.get("caption") or ""),
                 "after_contains": str(item.get("after_contains") or ""),
+                "role": str(item.get("role") or "supporting_visual"),
+                "allowed_source_types": list(item.get("allowed_source_types") or [str(item.get("source_type") or _root_to_source_type(raw_path))]),
             }
         )
     return slots
@@ -107,13 +111,20 @@ def _build_slot_record(
     root_name = "公开来源" if expected_source_type == "public" else "已生成"
     root_dir = image_dir / root_name
     actual_path = find_slot_file(root_dir, filename)
+    if actual_path is None:
+        alternate_root = image_dir / ("已生成" if expected_source_type == "public" else "公开来源")
+        actual_path = find_slot_file(alternate_root, filename)
     metadata = dict((public_index if expected_source_type == "public" else generated_index).get(filename) or {})
+    if not metadata and actual_path is not None:
+        actual_source_type = _root_to_source_type(str(actual_path.relative_to(image_dir)))
+        metadata = dict((public_index if actual_source_type == "public" else generated_index).get(filename) or {})
     metadata_present = bool(metadata)
     source_url = str(metadata.get("source_url") or "").strip()
     license_name = str(metadata.get("license") or "").strip()
     license_status = str(metadata.get("license_status") or ("verified" if license_name else "unknown")).strip().lower()
+    actual_source_type = _root_to_source_type(str(actual_path.relative_to(image_dir))) if actual_path is not None else ""
 
-    if expected_source_type == "public":
+    if actual_source_type == "public" or (expected_source_type == "public" and not actual_source_type):
         publishable = bool(metadata.get("publishable")) and bool(source_url) and bool(license_name)
     else:
         publishable = bool(actual_path is not None)
@@ -123,10 +134,13 @@ def _build_slot_record(
         "filename": filename,
         "caption": str(slot.get("caption") or ""),
         "after_contains": str(slot.get("after_contains") or ""),
+        "role": str(slot.get("role") or "supporting_visual"),
+        "allowed_source_types": [str(item) for item in slot.get("allowed_source_types") or [] if str(item).strip()],
         "expected_source_type": expected_source_type,
         "expected_path": str(slot.get("path") or ""),
         "file_present": actual_path is not None,
         "actual_path": str(actual_path) if actual_path is not None else "",
+        "actual_source_type": actual_source_type,
         "metadata_present": metadata_present,
         "metadata": metadata,
         "source_url": source_url,

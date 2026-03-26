@@ -7,6 +7,29 @@ from writing_brain.review import build_review_report
 
 
 class ReviewTests(unittest.TestCase):
+    def test_review_exposes_dimension_checks_and_blocking_rules(self) -> None:
+        result = build_review_report(
+            {
+                "run_id": "run_dimension_checks",
+                "draft_text": "标题：这是一篇还没成型的稿子\n\n导语：先铺背景，再慢慢说。\n\n我们应该重视 AI。",
+                "context_pack": {
+                    "platform": "wechat",
+                    "user_goal": "写一篇建立行业影响力的公众号观点文章",
+                    "must_cover_points": ["为什么现在成立", "边界在哪里"],
+                },
+            }
+        )
+
+        self.assertFalse(result["expanded_checks"]["length"]["ok"])
+        self.assertFalse(result["expanded_checks"]["depth"]["ok"])
+        self.assertFalse(result["expanded_checks"]["argument"]["ok"])
+        self.assertTrue(result["expanded_checks"]["formatting"]["hard_fail"])
+        self.assertIn("too_short", result["expanded_checks"]["blocking_issue_types"])
+        self.assertIn("formatting_mismatch", result["expanded_checks"]["blocking_issue_types"])
+        issue_types = {item["issue_type"] for item in result["top_issues"]}
+        self.assertIn("too_short", issue_types)
+        self.assertIn("formatting_mismatch", issue_types)
+
     def test_review_uses_fuzzy_coverage_for_paraphrased_must_cover_points(self) -> None:
         result = build_review_report(
             {
@@ -94,6 +117,26 @@ class ReviewTests(unittest.TestCase):
 
         issue_types = {item["issue_type"] for item in result["top_issues"]}
         self.assertNotIn("late_thesis", issue_types)
+
+    def test_review_argument_check_tracks_claim_support_gaps(self) -> None:
+        result = build_review_report(
+            {
+                "run_id": "run_claim_support_gap",
+                "draft_text": (
+                    "# 判断先行\n\n"
+                    "真正决定组织效率的，不是工具数量，而是是否有人能把工具编进业务流程。\n\n"
+                    "这会改写团队分工。\n\n"
+                    "大家都应该重视。"
+                ),
+                "context_pack": {
+                    "platform": "wechat",
+                },
+            }
+        )
+
+        self.assertGreaterEqual(result["expanded_checks"]["argument"]["claim_support_gaps"], 1)
+        self.assertFalse(result["expanded_checks"]["argument"]["ok"])
+        self.assertIn("weak_argument", {item["issue_type"] for item in result["top_issues"]})
 
     @patch(
         "writing_brain.review.call_ppchat_chat",

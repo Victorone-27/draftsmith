@@ -8,6 +8,7 @@ from typing import Any
 
 from .image_supply import GENERATED_INDEX_FILENAME, PUBLIC_INDEX_FILENAME, build_image_supply_bundle
 from .llm import call_gemini_native_chat, call_packy_chat, call_ppchat_chat, is_env_enabled
+from .text import compact_whitespace
 
 
 def build_image_review_report(payload: dict[str, Any]) -> dict[str, Any]:
@@ -33,6 +34,12 @@ def build_image_review_report(payload: dict[str, Any]) -> dict[str, Any]:
     generated_present = int(summary.get("generated_present") or 0)
     public_present = int(summary.get("public_present") or 0)
     images_present = int(summary.get("images_present") or 0)
+    task_payload = _read_json(tasks_path) if tasks_path.exists() else []
+    task_lookup = {
+        str(item.get("filename") or "").strip(): dict(item)
+        for item in task_payload
+        if isinstance(item, dict) and str(item.get("filename") or "").strip()
+    }
 
     file_issues: list[dict[str, str]] = []
     actions: list[str] = []
@@ -66,6 +73,20 @@ def build_image_review_report(payload: dict[str, Any]) -> dict[str, Any]:
         )
         actions.append("至少补 1 张公开来源真实图片，避免整包只有生成图。")
         score -= 18
+
+    content_checks = _build_image_content_checks(
+        slots=slots,
+        article_markdown=str(payload.get("article_markdown") or payload.get("final_article_markdown") or ""),
+        generated_expected=generated_expected,
+        public_expected=public_expected,
+        task_lookup=task_lookup,
+    )
+    content_issues = list(content_checks.get("issues") or [])
+    for issue in content_issues:
+        file_issues.append(issue)
+    if content_issues:
+        actions.extend(_image_content_actions(content_issues))
+        score -= min(30, len(content_issues) * 10)
 
     missing_public_metadata = [item for item in slots if item["expected_source_type"] == "public" and item["file_present"] and not item["metadata_present"]]
     if missing_public_metadata:
@@ -135,8 +156,9 @@ def build_image_review_report(payload: dict[str, Any]) -> dict[str, Any]:
         actions.append("重跑 build-publish-pack，生成图文发布 Word。")
         score -= 20
 
-    task_count = len(_read_json(tasks_path)) if tasks_path.exists() else 0
-    decision = "pass" if score >= 85 and not any(item["severity"] == "high" for item in file_issues) else "revise"
+    task_count = len(task_payload) if isinstance(task_payload, list) else 0
+    blocked_dimensions = list(content_checks.get("blocked_dimensions") or [])
+    decision = "pass" if score >= 85 and not any(item["severity"] == "high" for item in file_issues) and not blocked_dimensions else "revise"
 
     if decision == "pass":
         actions.insert(0, "图片包已通过审核，可直接使用图文 Word 交付或上传。")
@@ -158,9 +180,31 @@ def build_image_review_report(payload: dict[str, Any]) -> dict[str, Any]:
         "images_present": images_present,
         "image_task_count": task_count,
         "image_supply_bundle": supply_bundle,
+        "expanded_checks": {
+            "slot_supply": {
+                "expected_image_slots": expected_slots,
+                "images_present": images_present,
+                "generated_expected": generated_expected,
+                "generated_present": generated_present,
+                "public_expected": public_expected,
+                "public_present": public_present,
+                "ok": expected_slots > 0 and images_present >= expected_slots,
+            },
+            "content_alignment": content_checks,
+            "authenticity": dict(content_checks.get("authenticity") or {}),
+            "relevance": dict(content_checks.get("relevance") or {}),
+            "deliverables": {
+                "sources_note_present": sources_path.exists(),
+                "public_leads_present": public_leads_path.exists() if public_expected else True,
+                "pure_docx_present": pure_docx is not None,
+                "rich_docx_present": rich_docx is not None,
+                "ok": bool(sources_path.exists() and pure_docx is not None and rich_docx is not None),
+            },
+        },
         "top_issues": file_issues[:5] or [
             _issue("no_major_issue", "low", "图片包已满足交付条件", "图片、来源说明和 Word 文件已齐备")
         ],
+        "blocked_dimensions": blocked_dimensions,
         "required_actions": list(dict.fromkeys(actions)),
         "artifact_refs": [
             str(path)
@@ -231,6 +275,222 @@ def _issue(issue_type: str, severity: str, summary: str, evidence: str) -> dict[
 
 def _slot_names(items: list[dict[str, Any]]) -> str:
     return "、".join(str(item.get("filename") or "") for item in items[:5])
+
+
+def _build_image_content_checks(
+    *,
+    slots: list[dict[str, Any]],
+    article_markdown: str,
+    generated_expected: int,
+    public_expected: int,
+    task_lookup: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    issues: list[dict[str, str]] = []
+    abstract_signals = ["结构", "框架", "路径", "机制", "关系", "对比", "预算", "责任", "稳定性", "组织接口"]
+    abstract_article = any(signal in article_markdown for signal in abstract_signals)
+    generated_prompt_mismatch_slots: list[dict[str, Any]] = []
+    generated_prompt_missing_slots: list[dict[str, Any]] = []
+
+    if generated_expected > 0 and public_expected == 0:
+        public_present_slots = [slot for slot in slots if slot["expected_source_type"] == "public" and slot["file_present"]]
+        if public_present_slots:
+            issues.append(
+                _issue(
+                    "unexpected_public_images",
+                    "high",
+                    "当前配图应以信息图/生成图为主，不应混入公开照片",
+                    f"发现公开图片槽位：{_slot_names(public_present_slots)}",
+                )
+            )
+
+        for slot in slots:
+            if slot["expected_source_type"] != "generated":
+                continue
+            prompt = _slot_prompt_text(slot, task_lookup=task_lookup)
+            if not prompt:
+                generated_prompt_missing_slots.append(slot)
+                continue
+            if _looks_like_photo_prompt(prompt) and not _looks_like_infographic_prompt(prompt):
+                generated_prompt_mismatch_slots.append(slot)
+
+    if generated_prompt_missing_slots:
+        issues.append(
+            _issue(
+                "generated_prompt_missing",
+                "high",
+                "生成图缺少 prompt 记录，无法判断是否与正文信息点对应",
+                f"缺少 prompt：{_slot_names(generated_prompt_missing_slots)}",
+            )
+        )
+    if generated_prompt_mismatch_slots:
+        issues.append(
+            _issue(
+                "generated_prompt_mismatch",
+                "high",
+                "生成图 prompt 仍是泛摄影/宣传图，不是正文相关的信息图",
+                f"这些槽位仍偏照片式 prompt：{_slot_names(generated_prompt_mismatch_slots)}",
+            )
+        )
+
+    bad_public_slots: list[dict[str, Any]] = []
+    duplicate_titles: dict[str, int] = {}
+    authenticity_failures: list[dict[str, Any]] = []
+    relevance_failures: list[dict[str, Any]] = []
+    for slot in slots:
+        if not slot["file_present"]:
+            continue
+        actual_source_type = str(slot.get("actual_source_type") or slot.get("expected_source_type") or "")
+        role = str(slot.get("role") or "")
+        allowed_source_types = [str(item) for item in slot.get("allowed_source_types") or [] if str(item).strip()]
+        title = str((slot.get("metadata") or {}).get("title") or "").lower()
+        if actual_source_type == "public":
+            duplicate_titles[title] = duplicate_titles.get(title, 0) + 1
+            off_topic_terms = ["building", "architecture", "park", "empty office", "abandoned", ".pdf", "diagram", "symbol", "logo"]
+            if any(term in title for term in off_topic_terms):
+                bad_public_slots.append(slot)
+            anchor_text = f"{slot.get('caption') or ''} {slot.get('after_contains') or ''}"
+            if abstract_article and any(term in anchor_text for term in abstract_signals):
+                if not any(term in title for term in ["meeting", "business", "leader", "office", "team", "conference"]):
+                    bad_public_slots.append(slot)
+        if actual_source_type == "generated" and role in {"scene_photo", "product_screenshot"}:
+            authenticity_failures.append(slot)
+        if actual_source_type == "generated" and "public" in allowed_source_types and role == "cover_opinion":
+            authenticity_failures.append(slot)
+        if role in {"data_chart", "product_screenshot"} and actual_source_type == "generated":
+            prompt = _slot_prompt_text(slot, task_lookup=task_lookup).lower()
+            if not any(term in prompt for term in ["图", "chart", "diagram", "screenshot", "截图", "结构"]):
+                relevance_failures.append(slot)
+        if role == "cover_opinion" and actual_source_type == "public" and title and not any(term in title for term in ["meeting", "business", "conference", "office", "leader", "team", "executive"]):
+            relevance_failures.append(slot)
+
+    if bad_public_slots:
+        issues.append(
+            _issue(
+                "image_content_mismatch",
+                "high",
+                "图片内容和正文信息点不匹配",
+                f"这些公开图更像泛图或空镜：{_slot_names(bad_public_slots)}",
+            )
+        )
+    if authenticity_failures:
+        issues.append(
+            _issue(
+                "ai_editorial_risk",
+                "high",
+                "存在明显不符合真人编辑感的 AI 图位",
+                f"这些槽位需要改用真实图片或截图：{_slot_names(authenticity_failures)}",
+            )
+        )
+    if relevance_failures:
+        issues.append(
+            _issue(
+                "image_relevance_weak",
+                "medium",
+                "部分图片没有承担正文对应的信息职责",
+                f"这些槽位需要改成更强的说明图：{_slot_names(relevance_failures)}",
+            )
+        )
+
+    duplicated = [title for title, count in duplicate_titles.items() if title and count > 1]
+    if duplicated:
+        issues.append(
+            _issue(
+                "duplicated_public_images",
+                "medium",
+                "多处复用了同一张公开图，信息密度不足",
+                "至少两处公共来源图片标题完全相同",
+            )
+        )
+    return {
+        "strategy": "generated_only_infographic" if generated_expected > 0 and public_expected == 0 else "mixed_or_public",
+        "abstract_article": abstract_article,
+        "generated_prompt_mismatch_count": len(generated_prompt_mismatch_slots),
+        "generated_prompt_missing_count": len(generated_prompt_missing_slots),
+        "public_mismatch_count": len(bad_public_slots),
+        "duplicated_public_title_count": len(duplicated),
+        "blocked_dimensions": [
+            *(["authenticity"] if authenticity_failures else []),
+            *(["relevance"] if relevance_failures else []),
+        ],
+        "authenticity": {
+            "status": "block" if authenticity_failures else "pass",
+            "failed_slots": [str(slot.get("filename") or "") for slot in authenticity_failures],
+        },
+        "relevance": {
+            "status": "block" if relevance_failures else "pass",
+            "failed_slots": [str(slot.get("filename") or "") for slot in relevance_failures],
+        },
+        "ok": not issues,
+        "issues": issues,
+    }
+
+
+def _image_content_actions(issues: list[dict[str, str]]) -> list[str]:
+    actions: list[str] = []
+    for issue in issues:
+        issue_type = str(issue.get("issue_type") or "")
+        if issue_type == "unexpected_public_images":
+            actions.append("这类观点文优先用信息图、结构图、对比图，不要再混公开照片")
+        elif issue_type == "generated_prompt_missing":
+            actions.append("给每张生成图补 prompt 记录，避免图片审核无法判断内容对应关系")
+        elif issue_type == "generated_prompt_mismatch":
+            actions.append("把生成图 prompt 改成结构图、关系图、对比图这类正文相关的信息图任务")
+        elif issue_type == "image_content_mismatch":
+            actions.append("替换掉与正文信息点不匹配的图片，优先使用能表达结构和关系的信息图")
+        elif issue_type == "duplicated_public_images":
+            actions.append("不要重复使用同一张图，至少让不同信息点对应不同图示")
+        elif issue_type == "ai_editorial_risk":
+            actions.append("封面、截图位和场景位优先换成真实图片，不要再用一眼 AI 的视觉")
+        elif issue_type == "image_relevance_weak":
+            actions.append("让图片承担明确的信息职责，别再用纯装饰图凑数")
+    return actions
+
+
+def _slot_prompt_text(slot: dict[str, Any], *, task_lookup: dict[str, dict[str, Any]]) -> str:
+    metadata = dict(slot.get("metadata") or {})
+    prompt = str(metadata.get("prompt") or "").strip()
+    if prompt:
+        return prompt
+    task = dict(task_lookup.get(str(slot.get("filename") or "")) or {})
+    return str(task.get("prompt") or "").strip()
+
+
+def _looks_like_infographic_prompt(prompt: str) -> bool:
+    normalized = compact_whitespace(prompt).lower()
+    infographic_terms = [
+        "信息图",
+        "图解",
+        "结构图",
+        "框架图",
+        "关系图",
+        "路径图",
+        "流程图",
+        "对比图",
+        "示意图",
+        "diagram",
+        "infographic",
+        "schema",
+        "matrix",
+        "mapping",
+    ]
+    return any(term in normalized for term in infographic_terms)
+
+
+def _looks_like_photo_prompt(prompt: str) -> bool:
+    normalized = compact_whitespace(prompt).lower()
+    photo_terms = [
+        "真实纪实摄影",
+        "新闻图片",
+        "杂志专题",
+        "真实人物",
+        "真实场景",
+        "自然光",
+        "office",
+        "meeting",
+        "conference",
+        "摄影",
+    ]
+    return any(term in normalized for term in photo_terms)
 
 
 def _maybe_run_image_governance(

@@ -37,6 +37,7 @@ def build_context_pack(payload: dict[str, Any], config: AppConfig) -> dict[str, 
     user_goal = str(payload.get("user_goal") or "").strip()
     audience = str(payload.get("audience") or "").strip()
     tone_target = str(payload.get("tone_target") or "锋利但克制").strip()
+    include_recent_articles = bool(payload.get("include_recent_articles", False))
     run_id = str(payload.get("run_id") or now_run_id())
     project_claim_refs = _normalize_text_list(payload.get("project_claim_refs"))
     project_constraints = _normalize_text_list(payload.get("constraints"))
@@ -55,22 +56,28 @@ def build_context_pack(payload: dict[str, Any], config: AppConfig) -> dict[str, 
     )
 
     all_claims = load_markdown_items(config.claims_dir, "id", "title")
-    ranked_claims = rank_items(all_claims, query_terms, extra_text=topic)
+    ranked_claims = _filter_ranked_items(rank_items(all_claims, query_terms, extra_text=topic), min_score=1.0, min_ratio=0.6)
     referenced_claims, missing_claim_refs = _resolve_project_claims(all_claims, project_claim_refs)
     claims = _merge_claim_items(referenced_claims, ranked_claims, limit=5)
     sources = rank_items(load_markdown_items(config.sources_dir, "id", "title"), query_terms, extra_text=user_goal)[:3]
     structures = rank_items(load_markdown_items(config.structures_dir, "id", "name"), query_terms, extra_text=platform)[:2]
     image_plans = rank_items(load_markdown_items(config.image_plans_dir, "id", "name"), query_terms, extra_text=platform)[:1]
-    recent_articles = rank_items(load_published_articles(config.published_dir), query_terms, extra_text=topic)[:3]
+    recent_articles: list[Any] = []
+    if include_recent_articles:
+        recent_articles = _filter_ranked_items(
+            rank_items(load_published_articles(config.published_dir), query_terms, extra_text=topic),
+            min_score=3.0,
+            min_ratio=0.6,
+        )[:3]
     memory_knowledge, feedback_notes = _load_recent_knowledge(config, topic=topic, platform=platform)
     author_preferences = _load_preferences(config)
 
-    if not must_cover_points:
+    if not must_cover_points and referenced_claims:
         must_cover_points = [claim.title for claim in claims[:3]]
 
     memory_notes = []
     if claims:
-        memory_notes.append(f"资料库中已找到 {len(claims)} 条相关 claim，可优先复用。")
+        memory_notes.append(f"资料库中已找到 {len(claims)} 条高相关 claim，可按相关性选择性复用。")
     if referenced_claims:
         memory_notes.append(f"项目已显式绑定 {len(referenced_claims)} 条 claim，写作时必须优先使用。")
     if missing_claim_refs:
@@ -207,6 +214,14 @@ def _merge_claim_items(primary: list[Any], secondary: list[Any], *, limit: int) 
         if len(merged) >= limit:
             break
     return merged
+
+
+def _filter_ranked_items(items: list[Any], *, min_score: float, min_ratio: float) -> list[Any]:
+    if not items:
+        return []
+    top_score = max(float(getattr(item, "score", 0.0)) for item in items)
+    threshold = max(min_score, round(top_score * min_ratio, 4))
+    return [item for item in items if float(getattr(item, "score", 0.0)) >= threshold]
 
 
 def _claim_summary(body: str) -> str:

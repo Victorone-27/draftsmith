@@ -25,7 +25,7 @@ def compact_whitespace(text: str) -> str:
 def extract_terms(*parts: str) -> list[str]:
     seen: dict[str, None] = {}
     for part in parts:
-        for token in re.split(r"[，。；：、,\.\-\s/()\[\]【】“”‘’!！?？]+", part or ""):
+        for token in re.split(r"[，。；：、,\.\-\s/()\[\]【】\u201c\u201d\u2018\u2019!！?？与和的在是]+", part or ""):
             normalized = token.strip().lower()
             if len(normalized) < 2:
                 continue

@@ -7,6 +7,7 @@ from typing import Any
 
 from .llm import call_gemini_native_chat, call_packy_chat, call_ppchat_chat, is_env_enabled
 from .text import (
+    compact_whitespace,
     count_evidence_signals,
     extract_terms,
     filler_count,
@@ -102,6 +103,7 @@ def _build_heuristic_review_report(payload: dict[str, Any]) -> dict[str, Any]:
     context_pack = dict(payload.get("context_pack") or {})
     platform = str(payload.get("platform") or context_pack.get("platform") or "wechat")
     topic = str(payload.get("topic") or context_pack.get("topic") or "").strip()
+    user_goal = str(payload.get("user_goal") or context_pack.get("user_goal") or "").strip()
 
     must_cover = [str(item) for item in context_pack.get("must_cover_points") or [] if str(item).strip()]
     claim_titles = [str(item.get("title") or "") for item in context_pack.get("core_claims") or []]
@@ -117,22 +119,40 @@ def _build_heuristic_review_report(payload: dict[str, Any]) -> dict[str, Any]:
         )
     )
 
-    coverage_count = sum(1 for point in must_cover if _point_is_covered(draft_text, point))
+    uncovered_points = [point for point in must_cover if not _point_is_covered(draft_text, point)]
+    coverage_count = len(must_cover) - len(uncovered_points)
     coverage_ratio = coverage_count / len(must_cover) if must_cover else 1.0
     filler_hits = filler_count(draft_text)
     repeated_count = repeated_paragraph_count(draft_text)
     evidence_hits = count_evidence_signals(draft_text)
     first_paragraph_has_claim = True if not opening_terms else first_paragraph_contains(draft_text, opening_terms)
     length = len(draft_text)
+    minimum_length = _expected_min_length(platform, user_goal)
+    length_check = _build_length_check(length=length, minimum_length=minimum_length, paragraphs=paragraphs)
+    coverage_check = _build_coverage_check(must_cover=must_cover, coverage_count=coverage_count, uncovered_points=uncovered_points)
+    depth_check = _build_depth_check(draft_text, paragraphs=paragraphs)
+    argument_check = _build_argument_check(
+        draft_text,
+        paragraphs=paragraphs,
+        evidence_hits=evidence_hits,
+        coverage_ratio=coverage_ratio,
+    )
+    formatting_check = _build_formatting_check(draft_text, paragraphs=paragraphs, platform=platform)
 
-    alignment = _bounded_score(round(10 + coverage_ratio * 15 - max(0, len(must_cover) - coverage_count) * 2), 0, 25)
-    completeness = _bounded_score(round(8 + min(len(paragraphs), 6) * 2 + coverage_ratio * 6 - repeated_count * 2), 0, 20)
-    evidence = _bounded_score(round(4 + min(evidence_hits, 5) * 2 + coverage_ratio * 2), 0, 15)
-    structure = _bounded_score(round(8 + min(len(paragraphs), 6) - repeated_count * 2 - (0 if first_paragraph_has_claim else 3)), 0, 15)
-    style_fit = _bounded_score(round(12 - filler_hits * 2 - repeated_count), 0, 15)
-    platform_fit = _platform_score(platform, first_paragraph_has_claim, len(paragraphs), length)
+    length_score = _score_length_check(length_check)
+    coverage_score = _score_coverage_check(coverage_check)
+    depth_score = _score_depth_check(depth_check)
+    argument_score = _score_argument_check(argument_check)
+    structure_score = _bounded_score(
+        round(6 + min(len(paragraphs), 5) - repeated_count * 2 - (0 if first_paragraph_has_claim else 3)),
+        0,
+        10,
+    )
+    style_fit = _bounded_score(round(5 - filler_hits * 2 - repeated_count), 0, 5)
+    formatting_score = _score_formatting_check(formatting_check)
 
-    total_score = alignment + completeness + evidence + structure + style_fit + platform_fit
+    total_score = length_score + coverage_score + depth_score + argument_score + structure_score + style_fit + formatting_score
+    total_score = _bounded_score(total_score, 0, 100)
     lazy_index = _bounded_score(
         round(
             (1 - coverage_ratio) * 4
@@ -140,6 +160,9 @@ def _build_heuristic_review_report(payload: dict[str, Any]) -> dict[str, Any]:
             + repeated_count * 2
             + (0 if evidence_hits >= 2 else 2)
             + (0 if length >= 500 else 1)
+            + (0 if depth_check["ok"] else 1)
+            + (0 if argument_check["ok"] else 1)
+            + (0 if formatting_check["ok"] else 1)
         ),
         0,
         10,
@@ -147,16 +170,23 @@ def _build_heuristic_review_report(payload: dict[str, Any]) -> dict[str, Any]:
 
     issues = _build_issues(
         must_cover=must_cover,
-        coverage_count=coverage_count,
-        paragraphs=paragraphs,
-        first_paragraph_has_claim=first_paragraph_has_claim,
-        evidence_hits=evidence_hits,
         filler_hits=filler_hits,
         repeated_count=repeated_count,
+        evidence_hits=evidence_hits,
+        paragraphs=paragraphs,
+        first_paragraph_has_claim=first_paragraph_has_claim,
+        coverage_check=coverage_check,
+        length_check=length_check,
+        depth_check=depth_check,
+        argument_check=argument_check,
+        formatting_check=formatting_check,
     )
     rewrite_actions = _rewrite_actions(issues)
     strengths = _strengths(total_score, coverage_ratio, evidence_hits, first_paragraph_has_claim)
     decision = _decision(total_score, lazy_index)
+    blocking_issue_types = _blocking_issue_types(issues)
+    if blocking_issue_types:
+        decision = "rewrite" if total_score < 70 else "revise"
 
     return {
         "contract_name": "review_report",
@@ -167,14 +197,31 @@ def _build_heuristic_review_report(payload: dict[str, Any]) -> dict[str, Any]:
         "total_score": total_score,
         "lazy_index": lazy_index,
         "score_breakdown": {
-            "alignment": alignment,
-            "completeness": completeness,
-            "evidence": evidence,
-            "structure": structure,
+            "length": length_score,
+            "coverage": coverage_score,
+            "depth": depth_score,
+            "argument": argument_score,
+            "structure": structure_score,
             "style_fit": style_fit,
-            "platform_fit": platform_fit,
+            "formatting": formatting_score,
         },
-        "top_issues": issues[:5] or [
+        "expanded_checks": {
+            "minimum_length": minimum_length,
+            "length_ok": bool(length_check["ok"]),
+            "depth_signals": int(depth_check["signal_total"]),
+            "depth_ok": bool(depth_check["ok"]),
+            "argument_signals": int(argument_check["signal_total"]),
+            "argument_ok": bool(argument_check["ok"]),
+            "formatting_flags": list(formatting_check["flags"]),
+            "formatting_ok": bool(formatting_check["ok"]),
+            "length": length_check,
+            "coverage": coverage_check,
+            "depth": depth_check,
+            "argument": argument_check,
+            "formatting": formatting_check,
+            "blocking_issue_types": blocking_issue_types,
+        },
+        "top_issues": issues[:6] or [
             {
                 "issue_type": "no_major_issue",
                 "severity": "low",
@@ -665,7 +712,7 @@ def _merge_review_reports(heuristic_report: dict[str, Any], model_layer: dict[st
     merged = dict(heuristic_report)
     merged["total_score"] = fused_total
     merged["decision"] = fused_decision
-    merged["top_issues"] = _merge_issues(heuristic_report.get("top_issues") or [], model_layer.get("top_issues") or [])
+    merged["top_issues"] = _merge_issues(model_layer.get("top_issues") or [], heuristic_report.get("top_issues") or [])
     merged["rewrite_actions"] = _merge_texts(
         heuristic_report.get("rewrite_actions") or [],
         model_layer.get("rewrite_actions") or [],
@@ -694,9 +741,11 @@ def _build_model_reviewer_prompt(payload: dict[str, Any], heuristic_report: dict
 
 你要重点判断：
 1. 有没有跑题或偷懒。
-2. 判断是否清楚、是否有论据支撑。
-3. 有没有模板味、空话、重复表达。
-4. 是否真的符合平台写法。
+2. 篇幅是否够支撑判断，不够长就不要给高分。
+3. 内容深度是否足够，是否讲清为什么成立、边界在哪里。
+4. 论证是否有效，是否有因果链、对比、例子或推导支撑。
+5. 有没有模板味、空话、重复表达。
+6. 排版是否真的符合平台写法。
 
 文章主题：{context_pack.get("topic", "")}
 平台：{context_pack.get("platform", "")}
@@ -706,7 +755,7 @@ def _build_model_reviewer_prompt(payload: dict[str, Any], heuristic_report: dict
 必须覆盖：
 {must_cover}
 
-核心判断参考：
+历史观点参考（仅用于检查是否明显冲突，不是必须复用）：
 {claims}
 
 平台规则：
@@ -714,6 +763,12 @@ def _build_model_reviewer_prompt(payload: dict[str, Any], heuristic_report: dict
 
 风格规则：
 {style_rules}
+
+排版检查：
+- 母稿默认应是 `# 标题` 后直接进入正文
+- 不应出现“标题：”“导语：”“正文：”“标题备选”标签
+- 不应出现 `---` 分割线和明显模板化编号小标题
+- 默认应少用甚至不用 `##` 小标题，除非篇幅和信息密度确实需要
 
 项目硬约束：
 {project_constraints}
@@ -723,6 +778,12 @@ def _build_model_reviewer_prompt(payload: dict[str, Any], heuristic_report: dict
 
 规则层初判问题：
 {heuristic_issues}
+
+规则层维度：
+- length_ok: {((heuristic_report.get("expanded_checks") or {}).get("length_ok"))}
+- depth_ok: {((heuristic_report.get("expanded_checks") or {}).get("depth_ok"))}
+- argument_ok: {((heuristic_report.get("expanded_checks") or {}).get("argument_ok"))}
+- formatting_ok: {((heuristic_report.get("expanded_checks") or {}).get("formatting_ok"))}
 
 待审稿件：
 {draft_text or "无"}
@@ -767,7 +828,7 @@ def _build_independent_gemini_plaintext_prompt(payload: dict[str, Any], heuristi
 必须覆盖：
 {must_cover}
 
-核心判断参考：
+历史观点参考（仅用于检查是否明显冲突，不是必须复用）：
 {claims}
 
 平台规则：
@@ -775,6 +836,12 @@ def _build_independent_gemini_plaintext_prompt(payload: dict[str, Any], heuristi
 
 风格规则：
 {style_rules}
+
+排版检查：
+- 母稿默认应是 `# 标题` 后直接进入正文
+- 不应出现“标题：”“导语：”“正文：”“标题备选”标签
+- 不应出现 `---` 分割线和明显模板化编号小标题
+- 默认应少用甚至不用 `##` 小标题，除非篇幅和信息密度确实需要
 
 项目硬约束：
 {project_constraints}
@@ -825,7 +892,7 @@ def _build_independent_gemini_structured_prompt(payload: dict[str, Any], heurist
 必须覆盖：
 {must_cover}
 
-核心判断参考：
+历史观点参考（仅用于检查是否明显冲突，不是必须复用）：
 {claims}
 
 平台规则：
@@ -833,6 +900,12 @@ def _build_independent_gemini_structured_prompt(payload: dict[str, Any], heurist
 
 风格规则：
 {style_rules}
+
+排版检查：
+- 母稿默认应是 `# 标题` 后直接进入正文
+- 不应出现“标题：”“导语：”“正文：”“标题备选”标签
+- 不应出现 `---` 分割线和明显模板化编号小标题
+- 默认应少用甚至不用 `##` 小标题，除非篇幅和信息密度确实需要
 
 项目硬约束：
 {project_constraints}
@@ -1304,7 +1377,7 @@ def _merge_issues(primary: list[dict[str, str]], secondary: list[dict[str, str]]
                 "evidence": str(item.get("evidence") or "").strip(),
             }
         )
-        if len(merged) >= 5:
+        if len(merged) >= 6:
             break
     return merged or [
         {
@@ -1446,21 +1519,70 @@ def _normalize_severity(value: str) -> str:
 def _build_issues(
     *,
     must_cover: list[str],
-    coverage_count: int,
-    paragraphs: list[str],
-    first_paragraph_has_claim: bool,
-    evidence_hits: int,
     filler_hits: int,
     repeated_count: int,
+    evidence_hits: int,
+    paragraphs: list[str],
+    first_paragraph_has_claim: bool,
+    coverage_check: dict[str, Any],
+    length_check: dict[str, Any],
+    depth_check: dict[str, Any],
+    argument_check: dict[str, Any],
+    formatting_check: dict[str, Any],
 ) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
+    coverage_count = int(coverage_check.get("coverage_count") or 0)
+    missing_points = list(coverage_check.get("missing_points") or [])
     if must_cover and coverage_count < len(must_cover):
         issues.append(
             {
                 "issue_type": "missing_points",
                 "severity": "high",
                 "summary": f"要求覆盖的重点只写到了 {coverage_count}/{len(must_cover)} 个",
-                "evidence": "必须覆盖点未完整展开",
+                "evidence": "未覆盖点：" + "；".join(missing_points[:3]) if missing_points else "必须覆盖点未完整展开",
+            }
+        )
+    if not bool(length_check.get("ok")):
+        issues.append(
+            {
+                "issue_type": "too_short",
+                "severity": "high",
+                "summary": f"正文篇幅偏短，当前约 {length_check.get('actual_length')} 字符",
+                "evidence": f"当前平台与目标下，母稿建议至少 {length_check.get('minimum_length')} 字符",
+            }
+        )
+    if not bool(depth_check.get("ok")):
+        missing_dimensions = list(depth_check.get("missing_dimensions") or [])
+        issues.append(
+            {
+                "issue_type": "shallow_analysis",
+                "severity": "high",
+                "summary": "内容展开偏浅，判断没有真正讲透",
+                "evidence": (
+                    f"深度维度不足：{('、'.join(missing_dimensions[:3])) if missing_dimensions else '层次展开不足'}；"
+                    f"仅检测到 {depth_check.get('signal_total')} 处深度信号"
+                ),
+            }
+        )
+    if not bool(argument_check.get("ok")):
+        issues.append(
+            {
+                "issue_type": "weak_argument",
+                "severity": "high",
+                "summary": "论证链条偏弱，更像观点陈述而不是有效论证",
+                "evidence": (
+                    f"论证信号 {argument_check.get('signal_total')}，"
+                    f"claim-support 缺口 {argument_check.get('claim_support_gaps')}"
+                ),
+            }
+        )
+    if formatting_check.get("flags"):
+        issues.append(
+            {
+                "issue_type": "formatting_mismatch",
+                "severity": "high" if formatting_check.get("hard_fail") else "medium",
+                "summary": "排版仍有模板痕迹或与母稿体不符",
+                "evidence": "；".join(list(formatting_check.get("flags") or [])[:3]),
             }
         )
     if not first_paragraph_has_claim:
@@ -1508,6 +1630,18 @@ def _build_issues(
                 "evidence": "段落数过少",
             }
         )
+    if int(formatting_check.get("long_paragraphs") or 0) >= 3 or int(formatting_check.get("bullet_lines") or 0) >= 3:
+        issues.append(
+            {
+                "issue_type": "layout_density_issue",
+                "severity": "medium",
+                "summary": "排版密度过高，母稿阅读节奏发闷",
+                "evidence": (
+                    f"超长段 {formatting_check.get('long_paragraphs')} 个，"
+                    f"列表行 {formatting_check.get('bullet_lines')} 行"
+                ),
+            }
+        )
     return issues
 
 
@@ -1517,6 +1651,12 @@ def _rewrite_actions(issues: list[dict[str, str]]) -> list[str]:
         issue_type = issue["issue_type"]
         if issue_type == "missing_points":
             actions.append("把未覆盖的重点逐条补齐，不要只点到为止")
+        elif issue_type == "too_short":
+            actions.append("把关键判断、论证和边界展开，不要在观点刚成立时就收尾")
+        elif issue_type == "shallow_analysis":
+            actions.append("把判断继续往下拆，补清楚为什么成立、为什么现在成立、边界在哪里")
+        elif issue_type == "weak_argument":
+            actions.append("补强因果链、对比关系和关键例子，避免只剩结论堆叠")
         elif issue_type == "late_thesis":
             actions.append("把核心判断提前到首段或前两段")
         elif issue_type == "weak_support":
@@ -1527,6 +1667,10 @@ def _rewrite_actions(issues: list[dict[str, str]]) -> list[str]:
             actions.append("合并重复段落，同一层意思只说一次")
         elif issue_type == "underdeveloped":
             actions.append("把提纲式表达补成完整段落")
+        elif issue_type == "formatting_mismatch":
+            actions.append("按母稿排版重排，去掉模板标签、分割线和多余小标题")
+        elif issue_type == "layout_density_issue":
+            actions.append("把长段拆短，减少列表感，恢复公众号母稿的呼吸感")
     return actions[:5] or ["当前稿件可直接进入人工复核"]
 
 
@@ -1551,6 +1695,10 @@ def _decision(total_score: int, lazy_index: int) -> str:
     return "revise"
 
 
+def _has_blocking_issue(issues: list[dict[str, str]]) -> bool:
+    return bool(_blocking_issue_types(issues))
+
+
 def _platform_score(platform: str, first_paragraph_has_claim: bool, paragraph_count: int, text_length: int) -> int:
     platform = platform.lower()
     if platform == "wechat":
@@ -1558,6 +1706,246 @@ def _platform_score(platform: str, first_paragraph_has_claim: bool, paragraph_co
     if platform == "xiaohongshu":
         return _bounded_score(round(5 + (2 if paragraph_count <= 8 else 0) + (2 if text_length <= 900 else 0)), 0, 10)
     return _bounded_score(round(6 + (2 if paragraph_count >= 4 else 0) + (1 if text_length >= 900 else 0)), 0, 10)
+
+
+def _expected_min_length(platform: str, user_goal: str) -> int:
+    normalized_platform = str(platform or "").strip().lower()
+    normalized_goal = str(user_goal or "")
+    if normalized_platform == "wechat" and any(token in normalized_goal for token in ["观点文章", "行业影响力", "公众号"]):
+        return 1400
+    if normalized_platform == "wechat":
+        return 1200
+    return 0
+
+
+def _count_depth_signals(text: str) -> int:
+    return int(_build_depth_check(text, paragraphs=split_paragraphs(text)).get("signal_total") or 0)
+
+
+def _count_argument_signals(text: str) -> int:
+    return int(
+        _build_argument_check(
+            text,
+            paragraphs=split_paragraphs(text),
+            evidence_hits=count_evidence_signals(text),
+            coverage_ratio=1.0,
+        ).get("signal_total")
+        or 0
+    )
+
+
+def _detect_formatting_flags(text: str, *, platform: str) -> list[str]:
+    flags: list[str] = []
+    stripped = str(text or "").strip()
+    if platform == "wechat" and not stripped.startswith("# "):
+        flags.append("缺少 H1 标题起手")
+    forbidden_markers = {
+        "标题：": "出现标题标签",
+        "导语：": "出现导语标签",
+        "正文：": "出现正文标签",
+        "标题备选": "出现标题备选标签",
+        "\n---\n": "出现分割线",
+    }
+    for marker, message in forbidden_markers.items():
+        if marker in text:
+            flags.append(message)
+    if re.search(r"^\s*(\*\*)?\d+\.\s+", text, flags=re.M):
+        flags.append("出现模板化编号小标题")
+    if len(re.findall(r"^##\s+", text, flags=re.M)) > 2:
+        flags.append("小标题过多，偏离母稿体")
+    return flags[:5]
+
+
+def _blocking_issue_types(issues: list[dict[str, str]]) -> list[str]:
+    blocking_types = {"missing_points", "too_short", "shallow_analysis", "weak_argument", "formatting_mismatch"}
+    return [
+        str(item.get("issue_type") or "")
+        for item in issues
+        if str(item.get("issue_type") or "") in blocking_types and _normalize_severity(str(item.get("severity") or "")) == "high"
+    ]
+
+
+def _build_length_check(*, length: int, minimum_length: int, paragraphs: list[str]) -> dict[str, Any]:
+    paragraph_count = len(paragraphs)
+    ratio = round(length / minimum_length, 2) if minimum_length else 1.0
+    average_paragraph_length = round(length / paragraph_count) if paragraph_count else length
+    return {
+        "actual_length": length,
+        "minimum_length": minimum_length,
+        "paragraph_count": paragraph_count,
+        "average_paragraph_length": average_paragraph_length,
+        "ratio_to_minimum": ratio,
+        "ok": (length >= minimum_length) if minimum_length else True,
+        "severe_short": bool(minimum_length and ratio < 0.8),
+    }
+
+
+def _build_coverage_check(*, must_cover: list[str], coverage_count: int, uncovered_points: list[str]) -> dict[str, Any]:
+    coverage_ratio = coverage_count / len(must_cover) if must_cover else 1.0
+    return {
+        "must_cover_count": len(must_cover),
+        "coverage_count": coverage_count,
+        "coverage_ratio": round(coverage_ratio, 3),
+        "missing_points": uncovered_points[:4],
+        "ok": coverage_count >= len(must_cover) if must_cover else True,
+    }
+
+
+def _build_depth_check(text: str, *, paragraphs: list[str]) -> dict[str, Any]:
+    category_hits = {
+        "mechanism": _signal_hits(
+            text,
+            ["因为", "意味着", "决定", "导致", "问题在于", "本质上", "真正难的是", "结果是"],
+        ),
+        "boundary": _signal_hits(
+            text,
+            ["但这不意味着", "边界", "前提是", "风险是", "代价是", "条件是", "例外是", "不是所有"],
+        ),
+        "contrast": _signal_hits(
+            text,
+            ["不是", "而是", "相反", "反过来", "更像是", "真正"],
+        ),
+        "temporal": _signal_hits(
+            text,
+            ["短期", "中期", "长期", "现在", "接下来", "最终"],
+        ),
+    }
+    developed_paragraphs = sum(1 for paragraph in paragraphs if len(compact_whitespace(paragraph)) >= 70)
+    distinct_categories = [name for name, count in category_hits.items() if count > 0]
+    missing_dimensions = [name for name, count in category_hits.items() if count <= 0][:3]
+    signal_total = sum(category_hits.values())
+    minimum_developed = min(3, max(1, len(paragraphs) // 2 or (1 if paragraphs else 0)))
+    ok = signal_total >= 5 and len(distinct_categories) >= 2 and developed_paragraphs >= minimum_developed
+    return {
+        "signal_total": signal_total,
+        "category_hits": category_hits,
+        "developed_paragraphs": developed_paragraphs,
+        "distinct_categories": distinct_categories,
+        "missing_dimensions": missing_dimensions,
+        "minimum_developed_paragraphs": minimum_developed,
+        "ok": ok,
+    }
+
+
+def _build_argument_check(
+    text: str,
+    *,
+    paragraphs: list[str],
+    evidence_hits: int,
+    coverage_ratio: float,
+) -> dict[str, Any]:
+    category_hits = {
+        "causal": _signal_hits(text, ["因为", "所以", "因此", "导致", "结果是", "这意味着"]),
+        "contrast": _signal_hits(text, ["不是", "而是", "相比", "反过来", "问题在于"]),
+        "support": _signal_hits(text, ["比如", "例如", "案例", "场景", "数据", "一个很直接的例子"]),
+        "qualifier": _signal_hits(text, ["前提是", "代价是", "风险是", "条件是"]),
+    }
+    claim_support_gaps = _count_claim_support_gaps(paragraphs)
+    signal_total = sum(category_hits.values())
+    ok = signal_total >= 5 and evidence_hits >= 1 and claim_support_gaps <= 1 and coverage_ratio >= 0.6
+    return {
+        "signal_total": signal_total,
+        "category_hits": category_hits,
+        "evidence_hits": evidence_hits,
+        "claim_support_gaps": claim_support_gaps,
+        "ok": ok,
+    }
+
+
+def _build_formatting_check(text: str, *, paragraphs: list[str], platform: str) -> dict[str, Any]:
+    flags = _detect_formatting_flags(text, platform=platform)
+    long_paragraphs = sum(1 for paragraph in paragraphs if len(compact_whitespace(paragraph)) >= 220)
+    bullet_lines = len(re.findall(r"^\s*[-*]\s+", text, flags=re.M))
+    numbered_lines = len(re.findall(r"^\s*\d+\.\s+", text, flags=re.M))
+    heading_count = len(re.findall(r"^##\s+", text, flags=re.M))
+    hard_fail_messages = {"缺少 H1 标题起手", "出现标题标签", "出现导语标签", "出现正文标签", "出现标题备选标签", "出现分割线", "出现模板化编号小标题", "小标题过多，偏离母稿体"}
+    hard_fail = any(flag in hard_fail_messages for flag in flags)
+    ok = not flags and long_paragraphs <= 2 and bullet_lines <= 2 and numbered_lines == 0
+    return {
+        "flags": flags,
+        "heading_count": heading_count,
+        "bullet_lines": bullet_lines,
+        "numbered_lines": numbered_lines,
+        "long_paragraphs": long_paragraphs,
+        "hard_fail": hard_fail,
+        "ok": ok,
+    }
+
+
+def _score_length_check(check: dict[str, Any]) -> int:
+    minimum = int(check.get("minimum_length") or 0)
+    if minimum <= 0:
+        return 15
+    ratio = float(check.get("ratio_to_minimum") or 0.0)
+    if ratio >= 1.15:
+        return 15
+    if ratio >= 1.0:
+        return 12
+    if ratio >= 0.85:
+        return 8
+    if ratio >= 0.65:
+        return 4
+    return 0
+
+
+def _score_coverage_check(check: dict[str, Any]) -> int:
+    ratio = float(check.get("coverage_ratio") or 0.0)
+    if ratio >= 1.0:
+        return 20
+    if ratio >= 0.8:
+        return 16
+    if ratio >= 0.6:
+        return 12
+    if ratio >= 0.4:
+        return 7
+    return 2
+
+
+def _score_depth_check(check: dict[str, Any]) -> int:
+    signal_total = int(check.get("signal_total") or 0)
+    developed = int(check.get("developed_paragraphs") or 0)
+    distinct_categories = len(list(check.get("distinct_categories") or []))
+    return _bounded_score(4 + min(signal_total, 6) * 2 + developed + distinct_categories * 2, 0, 20)
+
+
+def _score_argument_check(check: dict[str, Any]) -> int:
+    signal_total = int(check.get("signal_total") or 0)
+    evidence_hits = int(check.get("evidence_hits") or 0)
+    claim_support_gaps = int(check.get("claim_support_gaps") or 0)
+    return _bounded_score(4 + min(signal_total, 6) * 2 + min(evidence_hits, 3) * 2 - claim_support_gaps * 4, 0, 20)
+
+
+def _score_formatting_check(check: dict[str, Any]) -> int:
+    score = 10
+    score -= min(6, len(list(check.get("flags") or [])) * 2)
+    score -= min(3, int(check.get("long_paragraphs") or 0))
+    score -= min(2, int(check.get("bullet_lines") or 0) // 2)
+    return _bounded_score(score, 0, 10)
+
+
+def _signal_hits(text: str, signals: list[str]) -> int:
+    return sum(str(text or "").count(signal) for signal in signals)
+
+
+def _count_claim_support_gaps(paragraphs: list[str]) -> int:
+    gaps = 0
+    for index, paragraph in enumerate(paragraphs):
+        normalized = compact_whitespace(paragraph)
+        if len(normalized) < 24:
+            continue
+        claim_like = any(token in normalized for token in ["不是", "而是", "意味着", "决定", "本质上", "关键", "真正", "危险"])
+        if not claim_like:
+            continue
+        current_or_next = normalized
+        if index + 1 < len(paragraphs):
+            current_or_next += " " + compact_whitespace(paragraphs[index + 1])
+        support_like = any(
+            token in current_or_next
+            for token in ["因为", "所以", "比如", "例如", "案例", "场景", "数据", "前提是", "代价是", "结果是"]
+        )
+        if not support_like:
+            gaps += 1
+    return gaps
 
 
 def _bounded_score(value: int, minimum: int, maximum: int) -> int:

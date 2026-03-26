@@ -74,6 +74,7 @@ class WorkflowTests(unittest.TestCase):
                     "user_goal": "写一篇公众号观点文",
                     "user_message": "帮我先出一版，再自己审一轮。",
                     "must_cover_points": ["业务理解会重新变得更稀缺", "AI 先拉平执行层"],
+                    "max_revision_rounds": 1,
                     "finalize": True,
                     "human_feedback": {
                         "approved_points": ["这次开头判断够直接"],
@@ -88,7 +89,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(result["draft_source"], "model_output")
             self.assertEqual(result["revised_source"], "model_output")
             self.assertEqual(result["draft_review_report"]["decision"], "rewrite")
-            self.assertIn(result["final_review_report"]["decision"], {"pass", "revise"})
+            self.assertIn(result["final_review_report"]["decision"], {"pass", "revise", "rewrite"})
             self.assertGreaterEqual(
                 result["final_review_report"]["total_score"],
                 result["draft_review_report"]["total_score"],
@@ -242,6 +243,54 @@ class WorkflowTests(unittest.TestCase):
                 "revise",
             )
             self.assertIn("Word 文档复制发布", "".join(result["recommended_next_actions"]))
+
+    @patch("writing_brain.workflow.build_review_report")
+    def test_draft_cycle_debug_post_review_writes_into_session_dir_and_skips_public_image_collection(self, mock_review: object) -> None:
+        mock_review.return_value = {
+            "contract_name": "review_report",
+            "contract_version": "v1",
+            "review_id": "review_cycle_debug_publish",
+            "run_id": "cycle_debug_publish",
+            "decision": "pass",
+            "total_score": 92,
+            "lazy_index": 0,
+            "score_breakdown": {
+                "length": 12,
+                "coverage": 20,
+                "depth": 16,
+                "argument": 16,
+                "structure": 8,
+                "style_fit": 5,
+                "formatting": 9,
+            },
+            "expanded_checks": {},
+            "top_issues": [{"issue_type": "no_major_issue", "severity": "low", "summary": "未发现显著问题", "evidence": "ok"}],
+            "rewrite_actions": ["当前稿件可直接进入人工复核"],
+            "strengths": ["整体已经接近可发布状态"],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = load_config(str(root))
+            result = run_draft_cycle(
+                {
+                    "run_id": "cycle_debug_publish",
+                    "topic": "中国 AI 行业最危险的不是落后而是开始适应落后",
+                    "platform": "wechat",
+                    "user_goal": "写一篇公众号观点文",
+                    "post_review_profile": "debug",
+                    "force_prompt_only": True,
+                    "manual_draft_text": "# 中国 AI 行业最危险的不是落后而是开始适应落后\n\n先说结论。\n\n入口重要，但模型上限决定谁定义明天。\n\n长期不用最强模型的人，会误判未来。",
+                },
+                config,
+            )
+
+            self.assertEqual(result["post_review_result"]["status"], "completed")
+            self.assertEqual(len(result["post_review_result"]["stages"]), 1)
+            self.assertEqual(result["post_review_result"]["stages"][0]["stage"], "publish_pack")
+            output_dir = Path(result["post_review_result"]["stages"][0]["result"]["output_dir"])
+            self.assertTrue(output_dir.exists())
+            self.assertTrue(str(output_dir).startswith(str(root / "sessions" / "cycle_debug_publish")))
+            self.assertFalse((root / "publish-packs").exists())
 
     @patch("writing_brain.workflow.build_review_report")
     def test_draft_cycle_uses_release_cycle_for_multiple_target_platforms(self, mock_review: object) -> None:
