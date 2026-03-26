@@ -43,7 +43,7 @@ def run_quality_session(payload: dict[str, Any], config: AppConfig) -> dict[str,
         blueprint=blueprint,
     )
     article_markdown = _polish_article_text(draft_text or "", assignment=assignment, blueprint=blueprint)
-    article_source = draft_source if article_markdown == draft_text else "polished_fallback"
+    article_source = draft_source if article_markdown == draft_text else f"polished_{draft_source}"
     quality_evaluation = build_quality_evaluation(
         payload,
         assignment=assignment,
@@ -51,6 +51,7 @@ def run_quality_session(payload: dict[str, Any], config: AppConfig) -> dict[str,
         diagnosis=diagnosis,
         blueprint=blueprint,
         article_markdown=article_markdown,
+        article_source=article_source,
         context_pack=context_pack,
     )
     image_brief = build_image_brief(
@@ -102,6 +103,7 @@ def run_quality_session(payload: dict[str, Any], config: AppConfig) -> dict[str,
         "draft_source": draft_source,
         "article_markdown": article_markdown,
         "article_source": article_source,
+        "research_quality": research_pack.get("research_quality", "full"),
         "quality_evaluation": quality_evaluation,
         "final_decision": quality_evaluation["decision"],
         "final_review_report": quality_evaluation["legacy_review_report"],
@@ -279,6 +281,7 @@ def build_research_pack(payload: dict[str, Any], *, context_pack: dict[str, Any]
         "memory_items": memory_items,
         "evidence_gap_count": len(evidence_items),
         "ready_for_blueprint": bool(claim_items or not evidence_items),
+        "research_quality": "full" if bool(claim_items or not evidence_items) else "draft_quality",
     }
 
 
@@ -309,7 +312,10 @@ def build_article_diagnosis(payload: dict[str, Any], *, assignment: dict[str, An
         "secondary_archetype": secondary,
         "prompt_asset": load_prompt_asset("diagnose_article.md"),
         "risks": risks,
-        "ready_for_compose": True,
+        "ready_for_compose": not (
+            research_pack.get("evidence_items")
+            and not research_pack.get("claim_items")
+        ),
         "recommendation": _diagnosis_recommendation(primary),
     }
 
@@ -350,7 +356,7 @@ def build_article_blueprint(
         "prompt_asset": load_prompt_asset("build_blueprint.md"),
         "main_claim": main_claim,
         "compose_brief": compact_whitespace(
-            f"围绕“{main_claim}”成稿，保持判断先行、论证连续，重点覆盖："
+            f"\u56f4\u7ed5\u300c{main_claim}\u300d\u6210\u7a3f\uff0c\u4fdd\u6301\u5224\u65ad\u5148\u884c\u3001\u8bba\u8bc1\u8fde\u7eed\uff0c\u91cd\u70b9\u8986\u76d6\uff1a"
             + "；".join(section["heading"] for section in sections)
         ),
         "must_cover_points": list(dict.fromkeys([*(assignment.get("must_cover_points") or []), main_claim])),
@@ -368,6 +374,7 @@ def build_quality_evaluation(
     diagnosis: dict[str, Any],
     blueprint: dict[str, Any],
     article_markdown: str,
+    article_source: str = "",
     context_pack: dict[str, Any],
 ) -> dict[str, Any]:
     review_report = build_review_report(
@@ -396,7 +403,7 @@ def build_quality_evaluation(
     voice_gate = voice_score >= 70 and not article_markdown.strip().startswith("**标题")
     if not voice_gate:
         blocked_dimensions.append("voice")
-    evidence_required = max(1, min(2, len(research_pack.get("evidence_items") or [])))
+    evidence_required = max(1, min(len(blueprint.get("must_cover_points") or []) or 1, len(research_pack.get("evidence_items") or []) or 1))
     evidence_gate = evidence_hits >= evidence_required
     if not evidence_gate:
         blocked_dimensions.append("evidence")
@@ -411,6 +418,9 @@ def build_quality_evaluation(
     )
     if not editor_gate:
         blocked_dimensions.append("editor")
+    source_gate = article_source not in ("blueprint_fallback", "polished_fallback")
+    if not source_gate:
+        blocked_dimensions.append("source")
 
     can_continue = not blocked_dimensions
     decision = "pass" if can_continue else ("rewrite" if len(blocked_dimensions) >= 3 else "revise")
@@ -429,6 +439,7 @@ def build_quality_evaluation(
             "evidence": {"status": "pass" if evidence_gate else "block", "signal_hits": evidence_hits, "prompt_asset": "review_evidence.md"},
             "platform": {"status": "pass" if platform_gate else "block"},
             "editor": {"status": "pass" if editor_gate else "block", "prompt_asset": "review_editor.md"},
+            "source": {"status": "pass" if source_gate else "block", "article_source": article_source},
         },
         "legacy_review_report": review_report,
     }
@@ -723,5 +734,7 @@ def _repair_strategy(blocked_dimensions: list[str]) -> list[str]:
     if "platform" in blocked_dimensions:
         messages.append("按平台规则重排版，不要把结构标签和演示文案带进正式正文。")
     if "editor" in blocked_dimensions:
-        messages.append("以可发稿标准再过一轮，不要把“可读”误判成“可交付”。")
+        messages.append('\u4ee5\u53ef\u53d1\u7a3f\u6807\u51c6\u518d\u8fc7\u4e00\u8f6e\uff0c\u4e0d\u8981\u628a\u300c\u53ef\u8bfb\u300d\u8bef\u5224\u6210\u300c\u53ef\u4ea4\u4ed8\u300d\u3002')
+    if "source" in blocked_dimensions:
+        messages.append("当前正文来自 fallback 骨架，需要重新走 compose 或提供人工母稿。")
     return messages or ["当前稿件需要人工复核。"]

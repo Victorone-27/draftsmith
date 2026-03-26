@@ -7,7 +7,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 from writing_brain.config import load_config
-from writing_brain.pipelines.quality_session import build_delivery, run_quality_session
+from writing_brain.pipelines.quality_session import (
+    build_article_diagnosis,
+    build_delivery,
+    build_quality_evaluation,
+    build_research_pack,
+    run_quality_session,
+)
 
 
 class QualitySessionTests(unittest.TestCase):
@@ -87,6 +93,111 @@ class QualitySessionTests(unittest.TestCase):
             self.assertEqual(result["text_delivery"]["status"], "blocked")
             self.assertEqual(result["rich_delivery"]["status"], "blocked")
             self.assertIn("voice", result["blocked_reasons"])
+
+    def test_diagnosis_blocks_when_evidence_without_claims(self) -> None:
+        assignment = {"topic": "test", "user_goal": "test", "must_cover_points": ["a"]}
+        research_pack = {
+            "claim_items": [],
+            "evidence_items": [{"need": "some evidence"}],
+            "evidence_gap_count": 1,
+        }
+        diagnosis = build_article_diagnosis({}, assignment=assignment, research_pack=research_pack)
+        self.assertFalse(diagnosis["ready_for_compose"])
+
+    def test_diagnosis_allows_when_no_evidence(self) -> None:
+        assignment = {"topic": "test", "user_goal": "test", "must_cover_points": []}
+        research_pack = {"claim_items": [], "evidence_items": [], "evidence_gap_count": 0}
+        diagnosis = build_article_diagnosis({}, assignment=assignment, research_pack=research_pack)
+        self.assertTrue(diagnosis["ready_for_compose"])
+
+    def test_research_quality_draft_when_claims_missing(self) -> None:
+        context_pack = {"core_claims": [], "evidence_needs": ["need1"]}
+        assignment = {"topic": "test", "evidence_needs": ["need1"]}
+        research_pack = build_research_pack({}, context_pack=context_pack, assignment=assignment)
+        self.assertEqual(research_pack["research_quality"], "draft_quality")
+
+    @patch("writing_brain.pipelines.quality_session.build_review_report")
+    def test_fallback_article_fails_source_gate(self, mock_review: object) -> None:
+        mock_review.return_value = {
+            "contract_name": "review_report",
+            "contract_version": "v1",
+            "decision": "pass",
+            "total_score": 92,
+            "lazy_index": 1,
+            "expanded_checks": {"argument": {"ok": True}, "formatting": {"ok": True}},
+            "top_issues": [],
+            "rewrite_actions": [],
+            "strengths": [],
+            "review_mode": "heuristic_only",
+            "review_layers": {},
+        }
+        result = build_quality_evaluation(
+            {},
+            assignment={"topic": "test", "platform": "wechat"},
+            research_pack={"evidence_items": []},
+            diagnosis={"ready_for_compose": True},
+            blueprint={"must_cover_points": ["a"]},
+            article_markdown="# Test\n\nPara 1.\n\nPara 2.\n\nPara 3.\n\nPara 4.",
+            article_source="blueprint_fallback",
+            context_pack={},
+        )
+        self.assertIn("source", result["blocked_dimensions"])
+        self.assertNotEqual(result["decision"], "pass")
+
+    @patch("writing_brain.pipelines.quality_session.build_review_report")
+    def test_manual_input_passes_source_gate(self, mock_review: object) -> None:
+        mock_review.return_value = {
+            "contract_name": "review_report",
+            "contract_version": "v1",
+            "decision": "pass",
+            "total_score": 92,
+            "lazy_index": 1,
+            "expanded_checks": {"argument": {"ok": True}, "formatting": {"ok": True}},
+            "top_issues": [],
+            "rewrite_actions": [],
+            "strengths": [],
+            "review_mode": "heuristic_only",
+            "review_layers": {},
+        }
+        result = build_quality_evaluation(
+            {},
+            assignment={"topic": "test", "platform": "wechat"},
+            research_pack={"evidence_items": []},
+            diagnosis={"ready_for_compose": True},
+            blueprint={"must_cover_points": ["a"]},
+            article_markdown="# Test\n\nPara 1.\n\nPara 2.\n\nPara 3.\n\nPara 4.",
+            article_source="manual_input",
+            context_pack={},
+        )
+        self.assertNotIn("source", result["blocked_dimensions"])
+
+    @patch("writing_brain.pipelines.quality_session.build_review_report")
+    def test_evidence_gate_scales_with_must_cover(self, mock_review: object) -> None:
+        mock_review.return_value = {
+            "contract_name": "review_report",
+            "contract_version": "v1",
+            "decision": "pass",
+            "total_score": 92,
+            "lazy_index": 1,
+            "expanded_checks": {"argument": {"ok": True}, "formatting": {"ok": True}},
+            "top_issues": [],
+            "rewrite_actions": [],
+            "strengths": [],
+            "review_mode": "heuristic_only",
+            "review_layers": {},
+        }
+        # Article with only 1 evidence signal but 4 must_cover_points and 4 evidence_items
+        result = build_quality_evaluation(
+            {},
+            assignment={"topic": "test", "platform": "wechat"},
+            research_pack={"evidence_items": [{"n": 1}, {"n": 2}, {"n": 3}, {"n": 4}]},
+            diagnosis={"ready_for_compose": True},
+            blueprint={"must_cover_points": ["a", "b", "c", "d"]},
+            article_markdown="# Test\n\nJust a claim.\n\nAnother claim.\n\nYet another.\n\nFinal claim.",
+            article_source="model_output",
+            context_pack={},
+        )
+        self.assertIn("evidence", result["blocked_dimensions"])
 
 
 if __name__ == "__main__":
