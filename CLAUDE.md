@@ -165,3 +165,67 @@ start-session 会在 `sessions/` 下生成以下文件：
 - 图片必须进入独立审核流程，未通过 `review-image-pack` 或 `collect_public_images` 后的图片复审，不视为可交付发布包
 - 默认 post-review 流水线是 `publish_pack -> collect_public_images`；多平台时是 `release_cycle -> collect_public_images`
 - 前台不参与正文措辞、标题打磨、导语润色、平台稿改写和图片选择决策；这些都必须由 workflow 内部角色完成
+
+## 开发进度存档（2026-03-27）
+
+branch: `design/v1-architecture`，latest commit: `16d8104`
+
+### 已完成
+
+1. v2 质量驱动 pipeline（`pipelines/quality_session.py`）
+   - 契约链：assignment → research → diagnosis → blueprint → compose → quality_evaluation → image_brief → delivery
+   - 替代旧 draft-cycle，旧模块 workflow.py / governance.py 已删除
+2. 五维质量闸门 + source gate
+   - argument（论证连续性，claim_support_gaps 按段落数缩放）
+   - voice（模板腔、空泛转折、列表感）
+   - evidence（证据信号，阈值随 must_cover_points 缩放）
+   - platform（排版规则）
+   - editor（总分 ≥ 85、lazy_index ≤ 4、段落 ≥ 4、diagnosis.ready_for_compose）
+   - source（fallback 骨架稿自动拦截）
+3. 11 个 prompt assets 充实（`writing_brain/prompts/*.md`）
+   - 每个都有输入/输出契约、质量标准、失败模式
+4. CLI 命令：start-session / continue-session / resolve-exception / build-delivery / accept-delivery / usage-stats
+   - continue-session 支持 `recompose: true` 强制重新生成
+5. 图片审核逐图位报警（`image_review.py`）
+   - 每个缺失图位报告 filename、role、期望来源、允许来源、补图指引
+6. LLM 调用统计（`usage.py`）
+   - thread-local `usage_scope` context manager，pipeline 入口自动设置
+   - 所有 LLM 调用（packy/ppchat/gemini/anthropic）自动记录到 `data-dir/usage/*.jsonl`
+   - CLI `usage-stats` 支持按 run_id / date / month / year 查询，按 provider / model 分组
+7. README 双语，反映 v2 pipeline 架构
+8. 82 个测试全绿
+
+### 已知待改进
+
+- structures/ 目录为空（无文章结构模板），pipeline 用默认结构
+- 公开图片搜索（Wikimedia Commons）对中文主题覆盖不足，经常 no_candidate_found
+- image_brief 把所有图位分配为 public 来源，缺少 fallback 到 generated 的自动策略
+- review.py 的 model review layer 未启用（当前只走 heuristic_only）
+- continue-session 的 recompose 会重新走完整 pipeline，没有只重跑 compose 的轻量路径
+- usage 统计只记录了 pipeline 内的调用，CLI 直接调 writer-chat / review-draft 等内部命令时不记录
+
+### 代码结构
+
+```
+writing_brain/
+  cli.py                  # CLI 入口，5 个主命令 + 内部调试命令
+  session_ops.py           # 高层会话编排（start/continue/resolve/build/accept）
+  pipelines/
+    quality_session.py     # v2 契约驱动 pipeline 引擎
+  prompt_assets.py         # prompt 文件加载器
+  prompts/                 # 11 个阶段的 prompt 模板
+  writer.py                # 写手：调模型生成/修改正文
+  review.py                # 审稿：启发式 + 模型评分
+  memory.py                # 记忆：反馈 → 知识体
+  context_pack.py          # 上下文组装
+  revision.py              # 文本解析 + 产物持久化
+  publish.py               # 发布包构建（Word + 配图）
+  image_review.py          # 图片包质量闸门
+  image_supply.py          # 图片供给状态检查
+  public_images.py         # 公开图片采集（Wikimedia）
+  release.py               # 多平台发布
+  post_review.py           # 审后交付流水线
+  usage.py                 # LLM 调用统计
+  llm.py                   # 模型调用抽象层
+  config.py / text.py / retrieval.py / frontmatter.py / knowledge.py / project.py
+```
