@@ -1,0 +1,25 @@
+{
+  "run_id": "cycle_20260323_demo",
+  "topic": "AI coding 与业务理解",
+  "platform": "wechat",
+  "user_goal": "写一篇公众号观点文章",
+  "user_message": "先出一版初稿，然后自己审一轮，不行就继续修。",
+  "must_cover_points": [
+    "AI 先拉平执行层，不是认知层",
+    "真正稀缺的会重新回到业务理解",
+    "传统靠年限自然沉淀业务理解的路径正在失效"
+  ],
+  "style_rules": [
+    "不要先铺宏大背景",
+    "少用正确废话"
+  ],
+  "platform_rules": [
+    "开头两段内必须给判断"
+  ],
+  "auto_revise": true,
+  "persist_memory": false,
+  "human_feedback": {
+    "approved_points": [],
+    "criticized_points": []
+  }
+}

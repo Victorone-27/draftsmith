@@ -1,0 +1,79 @@
+{
+  "contract_name": "context_pack",
+  "contract_version": "v1",
+  "run_id": "run_20260323_ai_coding",
+  "topic": "AI coding 与业务理解",
+  "platform": "wechat",
+  "audience": "关注 AI 与组织能力变化的职场人",
+  "user_goal": "写一篇有判断的公众号文章，不空谈技术，要落到组织能力变化",
+  "tone_target": "锋利但克制",
+  "core_claims": [
+    {
+      "claim_id": "clm-20260321-003",
+      "title": "真正稀缺的会重新回到业务理解",
+      "summary": "当 AI coding 变成基础能力后，真正长期稀缺的是业务理解和问题定义能力",
+      "evidence_strength": "medium",
+      "usable_for": ["核心判断", "组织选人"]
+    }
+  ],
+  "must_cover_points": [
+    "AI 先拉平执行层，不会先拉平认知层",
+    "为什么业务理解会重新变贵",
+    "这对普通办公室岗位意味着什么"
+  ],
+  "must_keep_facts": [],
+  "source_refs": [],
+  "preferred_structures": [
+    {
+      "structure_id": "wechat-opinion-001",
+      "name": "观点先行型",
+      "reason": "适合公众号长文，先下判断再展开"
+    }
+  ],
+  "style_rules": [
+    "开头不要大背景铺垫",
+    "同一个意思不要重复讲"
+  ],
+  "memory_knowledge": [
+    {
+      "entity_id": "preference_rule_run_demo_opening",
+      "entity_type": "preference_rule",
+      "statement": "首段应尽快给出核心判断。",
+      "applies_to": {
+        "platform": "wechat",
+        "topic_keywords": ["ai", "coding", "业务理解"],
+        "article_stage": "opening"
+      },
+      "source_feedback_run_ids": ["run_demo"],
+      "confidence": 0.82,
+      "support_count": 2,
+      "source": "human_feedback"
+    },
+    {
+      "entity_id": "anti_pattern_run_demo_ending",
+      "entity_type": "anti_pattern",
+      "statement": "避免使用只有态度没有落点的空泛结尾。",
+      "applies_to": {
+        "platform": "wechat",
+        "topic_keywords": ["ai", "coding", "业务理解"],
+        "article_stage": "ending"
+      },
+      "source_feedback_run_ids": ["run_demo"],
+      "confidence": 0.84,
+      "support_count": 2,
+      "source": "human_feedback"
+    }
+  ],
+  "platform_rules": [
+    "公众号首屏需要直接给判断",
+    "结尾不要口号化"
+  ],
+  "image_plan_hints": [
+    "优先结构图或编辑感插图"
+  ],
+  "memory_notes": [
+    "作者最近持续关注 AI coding 对职场能力结构的影响",
+    "已学习成功模式：开头直接给出判断时，作者认可度更高。",
+    "已学习反模式：避免使用只有态度没有落点的空泛结尾。"
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "run_id": "run_20260323_ai_coding",
+  "topic": "AI coding 与业务理解",
+  "platform": "wechat",
+  "session_summary": "本次先确定了核心判断，再补了办公室岗位变化的例子。",
+  "final_article_markdown": "先说结论。\n\nAI 先拉平的不是认知层，而是执行层。\n\n真正长期稀缺的能力，会重新回到业务理解。",
+  "human_feedback": {
+    "approved_points": [
+      "开头这次够直接"
+    ],
+    "criticized_points": [
+      "结尾还是有点空"
+    ],
+    "keep_doing": [
+      "继续保持首段给判断"
+    ],
+    "avoid_next_time": [
+      "不要用泛泛的总结句收尾"
+    ],
+    "overall_comment": "方向是对的，但最后一段还不够具体。"
+  },
+  "review_report": {
+    "top_issues": [
+      {
+        "issue_type": "weak_support"
+      }
+    ],
+    "rewrite_actions": [
+      "补一个更具体的办公室场景"
+    ]
+  },
+  "context_pack": {
+    "core_claims": [
+      {
+        "title": "真正稀缺的会重新回到业务理解",
+        "summary": "业务理解会重新变贵"
+      }
+    ]
+  }
+}

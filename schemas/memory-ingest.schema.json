@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://writing-brain.local/schemas/memory-ingest.schema.json",
+  "title": "Memory Ingest Record",
+  "type": "object",
+  "required": [
+    "contract_name",
+    "contract_version",
+    "run_id",
+    "topic",
+    "session_summary",
+    "article_summary",
+    "new_claims",
+    "new_rules"
+  ],
+  "properties": {
+    "contract_name": {
+      "const": "memory_ingest_record"
+    },
+    "contract_version": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "topic": {
+      "type": "string"
+    },
+    "session_summary": {
+      "type": "string"
+    },
+    "article_summary": {
+      "type": "string"
+    },
+    "human_feedback": {
+      "type": "object",
+      "properties": {
+        "approved_points": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "criticized_points": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "keep_doing": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "avoid_next_time": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "overall_comment": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "knowledge_entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["entity_id", "entity_type", "statement", "applies_to", "confidence"],
+        "properties": {
+          "entity_id": { "type": "string" },
+          "entity_type": {
+            "type": "string",
+            "enum": ["preference_rule", "anti_pattern", "success_pattern"]
+          },
+          "statement": { "type": "string" },
+          "applies_to": { "type": "object" },
+          "source_feedback_run_ids": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "confidence": { "type": "number" },
+          "support_count": { "type": "integer" },
+          "source": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "review_takeaways": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "new_claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title", "summary", "status"],
+        "properties": {
+          "title": { "type": "string" },
+          "summary": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["draft", "active", "discarded"]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "new_rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rule_type", "rule_text"],
+        "properties": {
+          "rule_type": {
+            "type": "string",
+            "enum": ["style", "platform", "review", "structure"]
+          },
+          "rule_text": { "type": "string" },
+          "source": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "hotspot_candidates": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "archive_refs": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

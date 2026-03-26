@@ -1,0 +1,10 @@
+.DS_Store
+.env
+.venv/
+__pycache__/
+*.pyc
+
+# Keep code in git. Keep runtime data outside the repo.
+data/
+runtime/
+outputs/

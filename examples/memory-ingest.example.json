@@ -1,0 +1,77 @@
+{
+  "contract_name": "memory_ingest_record",
+  "contract_version": "v1",
+  "run_id": "run_20260323_ai_coding",
+  "topic": "AI coding 与业务理解",
+  "session_summary": "本次讨论重点落在 AI 先拉平执行层、业务理解重新升值，以及办公室岗位能力重估。",
+  "article_summary": "文章最终选择公众号观点型结构，强调业务理解是 AI 时代更稀缺的能力。",
+  "human_feedback": {
+    "approved_points": [
+      "第一段直接下判断，这个方向是对的"
+    ],
+    "criticized_points": [
+      "结尾还是有点虚，没有落到人"
+    ],
+    "keep_doing": [
+      "继续保持结论先行"
+    ],
+    "avoid_next_time": [
+      "结尾不要泛泛升华"
+    ],
+    "overall_comment": "整体方向对，但落点还可以更具体。"
+  },
+  "knowledge_entities": [
+    {
+      "entity_id": "success_pattern_run_20260323_opening",
+      "entity_type": "success_pattern",
+      "statement": "开头直接给出判断时，作者认可度更高。",
+      "applies_to": {
+        "platform": "wechat",
+        "topic_keywords": ["ai", "coding", "业务理解"],
+        "article_stage": "opening"
+      },
+      "source_feedback_run_ids": ["run_20260323_ai_coding"],
+      "confidence": 0.82,
+      "support_count": 1,
+      "source": "human_feedback"
+    },
+    {
+      "entity_id": "anti_pattern_run_20260323_ending",
+      "entity_type": "anti_pattern",
+      "statement": "结尾如果只有抽象升华而没有具体落点，作者通常不认可。",
+      "applies_to": {
+        "platform": "wechat",
+        "topic_keywords": ["ai", "coding", "业务理解"],
+        "article_stage": "ending"
+      },
+      "source_feedback_run_ids": ["run_20260323_ai_coding"],
+      "confidence": 0.84,
+      "support_count": 1,
+      "source": "human_feedback"
+    }
+  ],
+  "review_takeaways": [
+    "公众号版本要更早下判断",
+    "不能只有抽象判断，必须补一个岗位场景"
+  ],
+  "new_claims": [
+    {
+      "title": "未来办公室岗位会把 AI coding 当成隐性标配",
+      "summary": "会不会用 AI coding 会逐渐从加分项变成基础项",
+      "status": "draft"
+    }
+  ],
+  "new_rules": [
+    {
+      "rule_type": "platform",
+      "rule_text": "公众号首屏需要更早给结论，不要连续两段纯背景",
+      "source": "review_feedback"
+    }
+  ],
+  "hotspot_candidates": [
+    "AI 工具普及后，办公室岗位如何重新分层"
+  ],
+  "archive_refs": [
+    "articles/2026-03-23-ai-coding与业务理解-wechat.md"
+  ]
+}

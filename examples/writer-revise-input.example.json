@@ -1,0 +1,28 @@
+{
+  "task_mode": "revise",
+  "topic": "AI coding 与业务理解",
+  "platform": "wechat",
+  "audience": "关注 AI 与组织能力变化的职场人",
+  "user_goal": "写一篇公众号观点文章，要讲清楚 AI 先拉平执行层，不会先拉平认知层",
+  "must_cover_points": [
+    "AI 先拉平执行层",
+    "业务理解会重新变贵",
+    "办公室岗位能力会重新分层"
+  ],
+  "current_draft": "先说一个大背景。\n\nAI coding 正在改变很多岗位。\n\n总的来说，我们应该拥抱变化。",
+  "review_report": {
+    "top_issues": [
+      {
+        "summary": "核心判断出现过晚，前两段都在铺垫"
+      },
+      {
+        "summary": "只有判断没有例子，正文支撑不足"
+      }
+    ],
+    "rewrite_actions": [
+      "把核心判断提前到第一段",
+      "补一个办公室岗位变化的具体场景"
+    ]
+  },
+  "user_message": "按 reviewer 的意见改，不要整体重写成另一篇。"
+}

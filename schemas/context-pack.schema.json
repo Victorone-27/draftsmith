@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://writing-brain.local/schemas/context-pack.schema.json",
+  "title": "Context Pack",
+  "type": "object",
+  "required": [
+    "contract_name",
+    "contract_version",
+    "run_id",
+    "topic",
+    "platform",
+    "user_goal",
+    "core_claims",
+    "must_cover_points"
+  ],
+  "properties": {
+    "contract_name": {
+      "const": "context_pack"
+    },
+    "contract_version": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "topic": {
+      "type": "string"
+    },
+    "platform": {
+      "type": "string"
+    },
+    "audience": {
+      "type": "string"
+    },
+    "user_goal": {
+      "type": "string"
+    },
+    "tone_target": {
+      "type": "string"
+    },
+    "core_claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim_id", "title", "summary"],
+        "properties": {
+          "claim_id": { "type": "string" },
+          "title": { "type": "string" },
+          "summary": { "type": "string" },
+          "evidence_strength": { "type": "string" },
+          "usable_for": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "must_cover_points": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "project_claim_refs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "project_constraints": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "evidence_needs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "must_keep_facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["fact_text"],
+        "properties": {
+          "fact_text": { "type": "string" },
+          "source_ref": { "type": "string" },
+          "is_hard_constraint": { "type": "boolean" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "source_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_id", "title"],
+        "properties": {
+          "source_id": { "type": "string" },
+          "title": { "type": "string" },
+          "source_url": { "type": "string" },
+          "why_relevant": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "preferred_structures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["structure_id", "name"],
+        "properties": {
+          "structure_id": { "type": "string" },
+          "name": { "type": "string" },
+          "reason": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "style_rules": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "memory_knowledge": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["entity_id", "entity_type", "statement", "applies_to", "confidence"],
+        "properties": {
+          "entity_id": { "type": "string" },
+          "entity_type": {
+            "type": "string",
+            "enum": ["preference_rule", "anti_pattern", "success_pattern"]
+          },
+          "statement": { "type": "string" },
+          "applies_to": { "type": "object" },
+          "source_feedback_run_ids": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "confidence": { "type": "number" },
+          "support_count": { "type": "integer" },
+          "source": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "platform_rules": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "image_plan_hints": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "memory_notes": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

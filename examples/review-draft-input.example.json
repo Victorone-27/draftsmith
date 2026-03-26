@@ -1,0 +1,22 @@
+{
+  "run_id": "run_20260323_ai_coding",
+  "use_model_reviewer": false,
+  "platform": "wechat",
+  "draft_text": "先说结论。\n\nAI 先拉平的不是认知层，而是执行层。\n\n这意味着未来办公室岗位会把 AI coding 当成隐性标配，但真正稀缺的能力会重新回到业务理解。\n\n一个很直接的例子是，很多过去靠重复劳动积累经验的岗位，以后会更早被工具压缩中间动作。",
+  "context_pack": {
+    "platform": "wechat",
+    "must_cover_points": [
+      "AI 先拉平执行层",
+      "业务理解会重新变贵",
+      "办公室岗位能力会重新分层"
+    ],
+    "core_claims": [
+      {
+        "title": "AI 先拉平的是执行层，不是认知层"
+      },
+      {
+        "title": "真正稀缺的会重新回到业务理解"
+      }
+    ]
+  }
+}

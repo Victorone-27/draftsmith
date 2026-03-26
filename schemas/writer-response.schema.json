@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://writing-brain.local/schemas/writer-response.schema.json",
+  "title": "Writer Response",
+  "type": "object",
+  "required": [
+    "contract_name",
+    "contract_version",
+    "run_id",
+    "task_mode",
+    "mode",
+    "writer_prompt",
+    "reply_text",
+    "context_pack"
+  ],
+  "properties": {
+    "contract_name": {
+      "const": "writer_response"
+    },
+    "contract_version": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "task_mode": {
+      "type": "string",
+      "enum": ["brainstorm", "draft", "revise"]
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["prompt_only", "model_output"]
+    },
+    "provider": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "writer_prompt": {
+      "type": "string"
+    },
+    "reply_text": {
+      "type": "string"
+    },
+    "context_pack": {
+      "type": "object"
+    },
+    "recommended_next_actions": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

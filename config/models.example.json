@@ -1,0 +1,27 @@
+{
+  "writer_brainstorm": {
+    "provider": "current-gpt-layer",
+    "model": "follow-current-session",
+    "purpose": "和作者聊天、收束思路，不走 Packy"
+  },
+  "writer_draft": {
+    "provider": "packyapi",
+    "model": "gemini-3.1-pro-preview",
+    "purpose": "生成初稿"
+  },
+  "writer_revise": {
+    "provider": "ppchat",
+    "model": "claude-opus-4-6",
+    "purpose": "根据 reviewer 意见定向修稿，默认走 Claude 中转"
+  },
+  "reviewer": {
+    "provider": "local-rules-plus-packyapi",
+    "model": "gemini-2.5-pro",
+    "purpose": "默认先跑规则层，需要时再叠加模型层做更严格的语义审稿"
+  },
+  "memory": {
+    "provider": "packyapi",
+    "model": "gemini-2.5-flash",
+    "purpose": "做会话总结、热点整理、资料入库"
+  }
+}

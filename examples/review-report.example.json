@@ -1,0 +1,46 @@
+{
+  "contract_name": "review_report",
+  "contract_version": "v1",
+  "review_id": "review_20260323_001",
+  "run_id": "run_20260323_ai_coding",
+  "decision": "revise",
+  "total_score": 78,
+  "lazy_index": 6,
+  "score_breakdown": {
+    "alignment": 20,
+    "completeness": 14,
+    "evidence": 10,
+    "structure": 13,
+    "style_fit": 13,
+    "platform_fit": 8
+  },
+  "top_issues": [
+    {
+      "issue_type": "late_thesis",
+      "severity": "high",
+      "summary": "核心判断出现过晚，前两段都在铺背景",
+      "evidence": "真正结论到第 3 段才出现"
+    },
+    {
+      "issue_type": "weak_support",
+      "severity": "high",
+      "summary": "业务理解为何更重要讲得抽象，没有例子",
+      "evidence": "第二部分只有判断，没有组织场景或岗位变化例子"
+    },
+    {
+      "issue_type": "template_closing",
+      "severity": "medium",
+      "summary": "结尾过于模板化，像泛泛升华",
+      "evidence": "最后两段信息密度低"
+    }
+  ],
+  "rewrite_actions": [
+    "把核心判断提前到第一段",
+    "补一个办公室岗位变化的具体场景",
+    "删掉结尾泛泛升华，改成更具体的收束"
+  ],
+  "strengths": [
+    "总体方向与选题一致",
+    "标题方向是对的"
+  ]
+}

@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://writing-brain.local/schemas/review-report.schema.json",
+  "title": "Review Report",
+  "type": "object",
+  "required": [
+    "contract_name",
+    "contract_version",
+    "review_id",
+    "run_id",
+    "decision",
+    "total_score",
+    "lazy_index",
+    "score_breakdown",
+    "top_issues",
+    "rewrite_actions"
+  ],
+  "properties": {
+    "contract_name": {
+      "const": "review_report"
+    },
+    "contract_version": {
+      "type": "string"
+    },
+    "review_id": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "decision": {
+      "type": "string",
+      "enum": ["pass", "revise", "rewrite"]
+    },
+    "total_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "lazy_index": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10
+    },
+    "score_breakdown": {
+      "type": "object",
+      "required": [
+        "alignment",
+        "completeness",
+        "evidence",
+        "structure",
+        "style_fit",
+        "platform_fit"
+      ],
+      "properties": {
+        "alignment": { "type": "number", "minimum": 0, "maximum": 25 },
+        "completeness": { "type": "number", "minimum": 0, "maximum": 20 },
+        "evidence": { "type": "number", "minimum": 0, "maximum": 15 },
+        "structure": { "type": "number", "minimum": 0, "maximum": 15 },
+        "style_fit": { "type": "number", "minimum": 0, "maximum": 15 },
+        "platform_fit": { "type": "number", "minimum": 0, "maximum": 10 }
+      },
+      "additionalProperties": false
+    },
+    "top_issues": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 5,
+      "items": {
+        "type": "object",
+        "required": ["issue_type", "severity", "summary"],
+        "properties": {
+          "issue_type": { "type": "string" },
+          "severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "summary": { "type": "string" },
+          "evidence": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "rewrite_actions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "review_mode": {
+      "type": "string",
+      "enum": ["heuristic_only", "hybrid"]
+    },
+    "review_layers": {
+      "type": "object",
+      "properties": {
+        "heuristic": { "type": "object" },
+        "model": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "strengths": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://writing-brain.local/schemas/draft-cycle-result.schema.json",
+  "title": "Draft Cycle Result",
+  "type": "object",
+  "required": [
+    "contract_name",
+    "contract_version",
+    "run_id",
+    "status",
+    "final_decision",
+    "context_pack",
+    "draft_turn",
+    "draft_text",
+    "draft_source",
+    "revised_text",
+    "revised_source",
+    "final_article_markdown",
+    "artifact_refs",
+    "recommended_next_actions"
+  ],
+  "properties": {
+    "contract_name": {
+      "const": "draft_cycle_result"
+    },
+    "contract_version": {
+      "type": "string"
+    },
+    "run_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["awaiting_draft", "awaiting_revision", "reviewed", "revised", "ingested"]
+    },
+    "final_decision": {
+      "type": "string"
+    },
+    "context_pack": {
+      "type": "object"
+    },
+    "draft_turn": {
+      "type": "object"
+    },
+    "draft_text": {
+      "type": "string"
+    },
+    "draft_source": {
+      "type": "string",
+      "enum": ["model_output", "manual_input", "none"]
+    },
+    "draft_review_report": {
+      "type": ["object", "null"]
+    },
+    "revise_turn": {
+      "type": ["object", "null"]
+    },
+    "revised_text": {
+      "type": "string"
+    },
+    "revised_source": {
+      "type": "string",
+      "enum": ["model_output", "manual_input", "none"]
+    },
+    "final_review_report": {
+      "type": ["object", "null"]
+    },
+    "final_article_markdown": {
+      "type": "string"
+    },
+    "post_review_result": {
+      "type": ["object", "null"]
+    },
+    "memory_record": {
+      "type": ["object", "null"]
+    },
+    "artifact_refs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "recommended_next_actions": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": false
+}
