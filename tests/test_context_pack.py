@@ -140,6 +140,21 @@ usable_for:
             self.assertEqual(result["core_claims"][0]["claim_id"], "clm-001")
             self.assertTrue(any("项目已显式绑定" in note for note in result["memory_notes"]))
 
+    def test_build_context_pack_normalizes_platform_alias(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            config = load_config(str(root))
+            result = build_context_pack(
+                {
+                    "topic": "知乎平台规则测试",
+                    "platform": "知乎",
+                },
+                config,
+            )
+            self.assertEqual(result["platform"], "zhihu")
+            self.assertEqual(result["target_platforms"], ["zhihu"])
+            self.assertIn("边界条件要写清楚", result["platform_rules"])
+
 
 if __name__ == "__main__":
     unittest.main()

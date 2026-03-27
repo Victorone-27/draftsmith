@@ -104,3 +104,45 @@ class ReleaseTests(unittest.TestCase):
         self.assertGreaterEqual(platform_result["final_evidence_signals"], 2)
         self.assertEqual(platform_result["completeness_reasons"], [])
         self.assertIn("第1段先把判断立住", saved_text)
+
+    @patch("writing_brain.release.build_publish_pack")
+    @patch("writing_brain.release.build_review_report")
+    def test_release_cycle_normalizes_chinese_platform_aliases(
+        self,
+        mock_review: object,
+        mock_publish_pack: object,
+    ) -> None:
+        mock_review.return_value = _pass_review_report()
+        mock_publish_pack.return_value = {
+            "contract_name": "publish_pack_result",
+            "contract_version": "v1",
+            "output_dir": "",
+            "artifact_refs": [
+                "/tmp/平台版-可直接发布-纯文本可复制.docx",
+                "/tmp/平台版-图文可发布.docx",
+            ],
+            "image_review_report": {"decision": "pass"},
+        }
+
+        article = "# 标题\n\n先说判断。\n\n再补原因。\n\n然后讲边界。\n\n最后收束。"
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_config(tmp)
+            result = run_release_cycle(
+                {
+                    "run_id": "release_aliases",
+                    "topic": "平台别名测试",
+                    "platforms": ["公众号", "知乎"],
+                    "source_platform": "公众号",
+                    "article_markdown": article,
+                    "manual_platform_articles": {
+                        "公众号": article,
+                        "知乎": article,
+                    },
+                    "auto_revise": False,
+                },
+                config,
+            )
+
+        self.assertEqual([item["platform"] for item in result["platform_results"]], ["wechat", "zhihu"])
+        self.assertEqual([item["platform_name"] for item in result["platform_results"]], ["公众号", "知乎"])
+        self.assertEqual([call.args[0]["platform"] for call in mock_publish_pack.call_args_list], ["wechat", "zhihu"])

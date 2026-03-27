@@ -7,6 +7,7 @@ from typing import Any
 
 from .config import AppConfig, ensure_runtime_dirs
 from .context_pack import build_context_pack
+from .platforms import normalize_platform, normalize_platform_list, platform_display_name
 from .publish import PLATFORM_NAMES, build_publish_pack
 from .review import build_review_report
 from .text import compact_whitespace, count_evidence_signals, now_run_id, slug_for_filename, split_paragraphs
@@ -40,9 +41,9 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
         raise ValueError("article_markdown 不能为空")
 
     source_context = dict(payload.get("context_pack") or {})
-    source_platform = str(payload.get("source_platform") or source_context.get("platform") or "wechat").strip().lower()
+    source_platform = normalize_platform(payload.get("source_platform") or source_context.get("platform") or "wechat")
     topic = str(payload.get("topic") or source_context.get("topic") or _extract_title(article_markdown)).strip()
-    platforms = _normalize_platforms(payload.get("platforms"))
+    platforms = normalize_platform_list(payload.get("platforms"), default=DEFAULT_RELEASE_PLATFORMS)
     output_root = _resolve_release_root(payload, config, topic)
     drafts_dir = output_root / "平台稿"
     packs_dir = output_root / "投稿包"
@@ -51,14 +52,14 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
 
     results: list[dict[str, Any]] = []
     manual_platform_articles = {
-        str(key).strip().lower(): str(value).strip()
+        normalize_platform(key, default=""): str(value).strip()
         for key, value in dict(payload.get("manual_platform_articles") or {}).items()
-        if str(key).strip() and str(value).strip()
+        if normalize_platform(key, default="") and str(value).strip()
     }
     manual_revised_platform_articles = {
-        str(key).strip().lower(): str(value).strip()
+        normalize_platform(key, default=""): str(value).strip()
         for key, value in dict(payload.get("manual_revised_platform_articles") or {}).items()
-        if str(key).strip() and str(value).strip()
+        if normalize_platform(key, default="") and str(value).strip()
     }
     for platform in platforms:
         platform_context = build_context_pack(
@@ -76,7 +77,7 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
             config,
         )
 
-        platform_name = PLATFORM_NAMES.get(platform, platform)
+        platform_name = platform_display_name(platform)
         platform_run_id = f"{run_id}_{platform}"
         target_chars = _platform_target_chars(platform, payload)
         draft_turn: dict[str, Any] | None = None
@@ -307,19 +308,8 @@ def _resolve_release_root(payload: dict[str, Any], config: AppConfig, topic: str
     path = config.data_dir / "release-cycles" / slug
     path.mkdir(parents=True, exist_ok=True)
     return path
-
-
-def _normalize_platforms(raw: Any) -> list[str]:
-    items = [str(item).strip().lower() for item in (raw or DEFAULT_RELEASE_PLATFORMS) if str(item).strip()]
-    deduped: list[str] = []
-    for item in items:
-        if item not in deduped:
-            deduped.append(item)
-    return deduped
-
-
 def _platform_adaptation_message(platform: str, *, source_platform: str, target_chars: int) -> str:
-    platform_name = PLATFORM_NAMES.get(platform, platform)
+    platform_name = platform_display_name(platform)
     if platform == "wechat":
         return (
             f"请基于当前母稿输出可直接发布的公众号版，首屏更快亮判断，保留观点推进和论证密度。"
@@ -356,7 +346,7 @@ def _platform_adaptation_message(platform: str, *, source_platform: str, target_
             f"要把经验判断讲透，参考展开密度接近 {target_chars} 字。"
         )
     return (
-        f"请把当前{PLATFORM_NAMES.get(source_platform, source_platform)}母稿改成适合{platform_name}发布的版本。"
+        f"请把当前{platform_display_name(source_platform)}母稿改成适合{platform_name}发布的版本。"
         f"不要压缩成摘要，观点必须讲完整；参考展开密度接近 {target_chars} 字。"
     )
 

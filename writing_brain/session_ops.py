@@ -83,56 +83,12 @@ def resolve_exception(payload: dict[str, Any], config: AppConfig) -> dict[str, A
 
 def accept_delivery(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
     session_result = _load_session_result(payload, config)
-    if "quality_evaluation" in session_result or "delivery_manifest" in session_result:
-        return maybe_accept_delivery({**payload, "session_result": session_result}, config)
 
-    exception_report = build_exception_report(session_result)
-    if exception_report["has_exception"]:
-        return {
-            "contract_name": "delivery_acceptance_result",
-            "contract_version": "v1",
-            "run_id": str(session_result.get("run_id") or ""),
-            "status": "blocked",
-            "cycle_result": session_result,
-            "exception_report": exception_report,
-            "memory_record": None,
-            "artifact_refs": list(dict.fromkeys([*(session_result.get("artifact_refs") or []), *(exception_report.get("artifact_refs") or [])])),
-            "recommended_next_actions": list(exception_report.get("recommended_user_actions") or ["先处理阻塞异常，再做最终验收。"]),
-        }
-    memory_record = dict(session_result.get("memory_record") or {})
-    if not memory_record:
-        context_pack = dict(session_result.get("context_pack") or {})
-        memory_record = ingest_memory_record(
-            {
-                "run_id": str(session_result.get("run_id") or ""),
-                "topic": str(payload.get("topic") or context_pack.get("topic") or "").strip(),
-                "platform": str(payload.get("platform") or context_pack.get("platform") or "wechat").strip(),
-                "final_article_markdown": str(session_result.get("final_article_markdown") or "").strip(),
-                "session_summary": str(payload.get("session_summary") or "").strip(),
-                "review_report": dict(session_result.get("final_review_report") or {}),
-                "context_pack": context_pack,
-                "human_feedback": dict(payload.get("human_feedback") or {}),
-                "hotspot_candidates": [str(item) for item in payload.get("hotspot_candidates") or []],
-            },
-            config,
-        )
+    # Normalize v1 session shape to v2 if needed
+    if "quality_evaluation" not in session_result and "delivery_manifest" not in session_result:
+        session_result = _normalize_v1_to_v2_shape(session_result)
 
-    result = {
-        "contract_name": "delivery_acceptance_result",
-        "contract_version": "v1",
-        "run_id": str(session_result.get("run_id") or ""),
-        "status": "accepted",
-        "cycle_result": session_result,
-        "delivery_summary": _build_delivery_summary(session_result),
-        "memory_record": memory_record,
-        "artifact_refs": list(dict.fromkeys([*(session_result.get("artifact_refs") or []), *(memory_record.get("archive_refs") or [])])),
-        "recommended_next_actions": [
-            "最终产出已验收，可以按发布计划分平台上传。",
-            "本轮经验已写入 memory，下次会自动复用。",
-        ],
-    }
-    _write_delivery_record(config, result)
-    return result
+    return maybe_accept_delivery({**payload, "session_result": session_result}, config)
 
 
 def build_exception_report(cycle_result: dict[str, Any]) -> dict[str, Any]:
@@ -178,6 +134,20 @@ def build_exception_report(cycle_result: dict[str, Any]) -> dict[str, Any]:
                     artifact_refs=[str(item) for item in delivery_manifest.get("artifact_refs") or []],
                 )
             )
+        post_review_result = dict(cycle_result.get("post_review_result") or {})
+        post_review_status = str(post_review_result.get("status") or "").strip().lower()
+        if post_review_result and post_review_status in {"failed", "partial"}:
+            issues.append(
+                _issue(
+                    stage="post_review_pipeline",
+                    severity="high" if post_review_status == "failed" else "medium",
+                    summary="发布后处理流水线未完整通过",
+                    evidence=f"post_review_result.status={post_review_status}",
+                    actions=["检查发布包、图片检索和多平台产物是否缺失，再决定是否重跑。"],
+                    artifact_refs=[str(item) for item in post_review_result.get("artifact_refs") or []],
+                )
+            )
+        issues.extend(_collect_delivery_issues(cycle_result))
         issues = _dedupe_issues(issues)
         return {
             "contract_name": "session_exception_report",
@@ -346,6 +316,51 @@ def _public_image_collect_issues(result: dict[str, Any]) -> list[dict[str, Any]]
 def _collect_review_artifacts(cycle_result: dict[str, Any]) -> list[str]:
     refs = [str(item) for item in cycle_result.get("artifact_refs") or []]
     return [item for item in refs if item.endswith(".md") or item.endswith(".json")]
+
+
+def _normalize_v1_to_v2_shape(session_result: dict[str, Any]) -> dict[str, Any]:
+    """Normalize old v1 session shape to v2 quality_session shape for unified acceptance path."""
+    exception_report = build_exception_report(session_result)
+
+    # Build a minimal v2-like shape with quality_evaluation and delivery_manifest
+    normalized = {
+        **session_result,
+        "quality_evaluation": {
+            "contract_name": "quality_evaluation",
+            "contract_version": "v1_compat",
+            "blocked_dimensions": [],
+            "repair_strategy": [],
+        },
+        "delivery_manifest": {
+            "contract_name": "delivery_manifest",
+            "contract_version": "v1_compat",
+            "status": "blocked" if exception_report["has_exception"] else "passed",
+            "text_delivery": {
+                "status": "passed" if not exception_report["has_exception"] else "blocked",
+            },
+            "rich_delivery": {
+                "status": "unknown",
+            },
+            "image_gate": {
+                "status": "unknown",
+            },
+            "artifact_refs": list(session_result.get("artifact_refs") or []),
+        },
+        "assignment": {
+            "topic": str(session_result.get("context_pack", {}).get("topic") or ""),
+            "platform": str(session_result.get("context_pack", {}).get("platform") or "wechat"),
+            "user_goal": str(session_result.get("context_pack", {}).get("user_goal") or ""),
+            "context_pack": dict(session_result.get("context_pack") or {}),
+        },
+        "article_markdown": str(session_result.get("final_article_markdown") or ""),
+        "final_review_report": dict(session_result.get("final_review_report") or {}),
+    }
+
+    if exception_report["has_exception"]:
+        normalized["status"] = "blocked"
+        normalized["recommended_next_actions"] = list(exception_report.get("recommended_user_actions") or [])
+
+    return normalized
 
 
 def _build_delivery_summary(cycle_result: dict[str, Any]) -> dict[str, Any]:

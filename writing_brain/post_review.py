@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import AppConfig
+from .platforms import normalize_platform, normalize_platform_list, platform_display_name
 from .public_images import collect_public_images
 from .publish import PLATFORM_NAMES, build_publish_pack
 from .release import run_release_cycle
@@ -53,7 +54,7 @@ def run_post_review_pipeline(
         "final_article_markdown": article_markdown,
         "context_pack": context_pack,
         "topic": str(payload.get("topic") or context_pack.get("topic") or "").strip(),
-        "platform": str(payload.get("platform") or context_pack.get("platform") or "wechat").strip().lower(),
+        "platform": normalize_platform(payload.get("platform") or context_pack.get("platform") or "wechat"),
         "title": str(payload.get("title") or context_pack.get("title") or "").strip(),
     }
 
@@ -133,7 +134,7 @@ def _stage_handlers() -> dict[str, StageHandler]:
 
 def _normalize_stages(raw: Any, payload: dict[str, Any]) -> list[dict[str, Any]]:
     if raw is None:
-        target_platforms = [str(item).strip().lower() for item in payload.get("target_platforms") or [] if str(item).strip()]
+        target_platforms = normalize_platform_list(payload.get("target_platforms"))
         profile = _post_review_profile(payload)
         if profile in {"off", "disabled", "none"}:
             return []
@@ -182,7 +183,7 @@ def _run_publish_pack_stage(payload: dict[str, Any], config: AppConfig, stage_sp
             **payload,
             **stage_input,
             "article_markdown": str(payload.get("article_markdown") or payload.get("final_article_markdown") or "").strip(),
-            "platform": str(stage_input.get("platform") or payload.get("platform") or "wechat").strip().lower(),
+            "platform": normalize_platform(stage_input.get("platform") or payload.get("platform") or "wechat"),
             "topic": str(stage_input.get("topic") or payload.get("topic") or "").strip(),
             "title": str(stage_input.get("title") or payload.get("title") or "").strip(),
             **({"output_dir": str(resolved_output_dir)} if resolved_output_dir is not None else {}),
@@ -206,14 +207,14 @@ def _run_publish_pack_stage(payload: dict[str, Any], config: AppConfig, stage_sp
 
 def _run_release_cycle_stage(payload: dict[str, Any], config: AppConfig, stage_spec: dict[str, Any]) -> dict[str, Any]:
     stage_input = dict(stage_spec.get("input") or {})
-    target_platforms = [str(item).strip().lower() for item in stage_input.get("platforms") or payload.get("target_platforms") or [] if str(item).strip()]
+    target_platforms = normalize_platform_list(stage_input.get("platforms") or payload.get("target_platforms"))
     resolved_output_root = _resolve_debug_release_output_root(payload, config, stage_input=stage_input)
     release_result = run_release_cycle(
         {
             **payload,
             **stage_input,
             "article_markdown": str(payload.get("article_markdown") or payload.get("final_article_markdown") or "").strip(),
-            "source_platform": str(stage_input.get("source_platform") or payload.get("platform") or "wechat").strip().lower(),
+            "source_platform": normalize_platform(stage_input.get("source_platform") or payload.get("platform") or "wechat"),
             "platforms": target_platforms,
             **({"output_root": str(resolved_output_root)} if resolved_output_root is not None else {}),
         },
@@ -280,8 +281,8 @@ def _resolve_debug_publish_output_dir(
     run_id = str(payload.get("run_id") or "").strip()
     if not run_id:
         return None
-    platform = str(stage_input.get("platform") or payload.get("platform") or "wechat").strip().lower()
-    platform_name = PLATFORM_NAMES.get(platform, platform)
+    platform = normalize_platform(stage_input.get("platform") or payload.get("platform") or "wechat")
+    platform_name = platform_display_name(platform)
     path = config.sessions_dir / run_id / "post-review" / "投稿包" / platform_name
     path.mkdir(parents=True, exist_ok=True)
     return path

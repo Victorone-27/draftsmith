@@ -1,8 +1,17 @@
 .DS_Store
 .env
+.env.*
 .venv/
 __pycache__/
 *.pyc
+*.egg-info/
+.pytest_cache/
+
+# Secrets — never commit API keys or credentials
+secrets/
+credentials/
+*.key
+config/models.json
 
 # Keep code in git. Keep runtime data outside the repo.
 data/

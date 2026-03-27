@@ -128,6 +128,7 @@ python3 -m writing_brain.cli accept-delivery \
 - `render-packy-images`
 - `review-image-pack`
 - `memory-ingest`
+- `sanitize-data-dir`
 
 ## v2 质量闸门
 
@@ -168,7 +169,7 @@ start-session 会在 `sessions/` 下生成以下文件：
 
 ## 开发进度存档（2026-03-27）
 
-branch: `design/v1-architecture`，latest commit: `16d8104`
+branch: `design/v1-architecture`，当前记录基于本地 worktree 快照（含未提交的架构补强与 hygiene 改动）
 
 ### 已完成
 
@@ -186,6 +187,7 @@ branch: `design/v1-architecture`，latest commit: `16d8104`
    - 每个都有输入/输出契约、质量标准、失败模式
 4. CLI 命令：start-session / continue-session / resolve-exception / build-delivery / accept-delivery / usage-stats
    - continue-session 支持 `recompose: true` 强制重新生成
+   - `--data-dir` 同时兼容全局参数位和子命令参数位
 5. 图片审核逐图位报警（`image_review.py`）
    - 每个缺失图位报告 filename、role、期望来源、允许来源、补图指引
 6. LLM 调用统计（`usage.py`）
@@ -193,7 +195,17 @@ branch: `design/v1-architecture`，latest commit: `16d8104`
    - 所有 LLM 调用（packy/ppchat/gemini/anthropic）自动记录到 `data-dir/usage/*.jsonl`
    - CLI `usage-stats` 支持按 run_id / date / month / year 查询，按 provider / model 分组
 7. README 双语，反映 v2 pipeline 架构
-8. 82 个测试全绿
+8. 平台规范化与主链路补强
+   - 新增 `writing_brain/platforms.py`，统一平台别名、展示名和文件命名规则
+   - `context_pack` / `post_review` / `release` / `publish` / `retrieval` / `project` 全链路改为共用规范化逻辑
+   - `start-session` 主入口重新接回 post-review pipeline，异常报告会纳入 post-review 阶段失败
+   - 项目目录模糊匹配从“静默命中”改为“歧义即报错”，避免 brief 误读
+9. 数据目录 hygiene
+   - 新增内部命令 `sanitize-data-dir`，默认 dry-run，传入 `{"apply": true}` 才实际清理
+   - 检索层会忽略 `.DS_Store` 和 transient runtime 目录，避免垃圾文件进入知识检索
+   - 物理清理范围限制在 `publish-packs/` 和 `release-cycles/` 下的运行时垃圾目录
+   - 真实数据目录 `~/Documents/文稿/写作系统` 已完成一次清理，移除 25 个污染项
+10. 117 个测试全绿
 
 ### 已知待改进
 
@@ -203,6 +215,7 @@ branch: `design/v1-architecture`，latest commit: `16d8104`
 - review.py 的 model review layer 未启用（当前只走 heuristic_only）
 - continue-session 的 recompose 会重新走完整 pipeline，没有只重跑 compose 的轻量路径
 - usage 统计只记录了 pipeline 内的调用，CLI 直接调 writer-chat / review-draft 等内部命令时不记录
+- Finder 仍可能重新生成 `.DS_Store`；当前已提供 `sanitize-data-dir` 做受限清理，但尚未接入自动保洁
 
 ### 代码结构
 

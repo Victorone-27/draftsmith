@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 from typing import Any
 from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 
 
 DEFAULT_BASE_URL = "https://www.packyapi.com/v1"
@@ -192,25 +192,18 @@ def call_anthropic_messages(
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
-    command = [
-        "curl",
-        "-sS",
-        "--max-time",
-        "180",
-        endpoint,
-        "-H",
-        "Content-Type: application/json",
-        "-H",
-        f"x-api-key: {api_key}",
-        "-H",
-        "anthropic-version: 2023-06-01",
-        "-H",
-        "User-Agent: writing-brain/0.1",
-        "--data",
-        json.dumps(payload, ensure_ascii=False),
-    ]
     try:
-        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=180)
+        body = _http_post_json(
+            endpoint,
+            payload,
+            headers={
+                "Content-Type": "application/json",
+                "x-api-key": api_key,
+                "anthropic-version": "2023-06-01",
+                "User-Agent": "writing-brain/0.1",
+            },
+            timeout=180,
+        )
     except Exception as exc:
         return {
             "mode": "prompt_only",
@@ -218,14 +211,6 @@ def call_anthropic_messages(
             "provider": "anthropic",
             "model": model,
         }
-    if completed.returncode != 0:
-        return {
-            "mode": "prompt_only",
-            "reply_text": f"Claude 调用失败，已退回 prompt_only。错误：{(completed.stderr or completed.stdout).strip()[:400]}",
-            "provider": "anthropic",
-            "model": model,
-        }
-    body = completed.stdout
     try:
         data = json.loads(body)
         if "error" in data:
@@ -300,23 +285,17 @@ def call_openai_compatible_chat(
     }
     if response_format:
         payload["response_format"] = response_format
-    command = [
-        "curl",
-        "-sS",
-        "--max-time",
-        "180",
-        f"{base_url}/chat/completions",
-        "-H",
-        "Content-Type: application/json",
-        "-H",
-        f"Authorization: Bearer {api_key}",
-        "-H",
-        "User-Agent: writing-brain/0.1",
-        "--data",
-        json.dumps(payload, ensure_ascii=False),
-    ]
     try:
-        completed = subprocess.run(command, check=False, capture_output=True, text=True, timeout=180)
+        body = _http_post_json(
+            f"{base_url}/chat/completions",
+            payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+                "User-Agent": "writing-brain/0.1",
+            },
+            timeout=180,
+        )
     except Exception as exc:
         return {
             "mode": "prompt_only",
@@ -324,14 +303,6 @@ def call_openai_compatible_chat(
             "provider": provider,
             "model": model,
         }
-    if completed.returncode != 0:
-        return {
-            "mode": "prompt_only",
-            "reply_text": f"{provider} 调用失败，已退回 prompt_only。错误：{(completed.stderr or completed.stdout).strip()[:400]}",
-            "provider": provider,
-            "model": model,
-        }
-    body = completed.stdout
     try:
         data = json.loads(body)
         if "error" in data:
@@ -439,12 +410,23 @@ def _maybe_record_usage(result: dict[str, Any], *, usage_context: dict[str, str]
         record(
             data_dir,
             run_id=ctx.get("run_id", ""),
+            caller=caller,
             provider=str(result.get("provider") or ""),
             model=str(result.get("model") or ""),
-            caller=caller,
             prompt_tokens=int(usage.get("prompt_tokens") or 0),
             completion_tokens=int(usage.get("completion_tokens") or 0),
-            total_tokens=int(usage.get("total_tokens") or 0),
         )
     except Exception:
         pass
+
+
+def _http_post_json(url: str, payload: dict[str, Any], headers: dict[str, str], timeout: int) -> str:
+    """POST JSON payload and return response body as string."""
+    req = Request(
+        url,
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers=headers,
+        method="POST",
+    )
+    with urlopen(req, timeout=timeout) as response:
+        return response.read().decode("utf-8")

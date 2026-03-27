@@ -90,6 +90,18 @@ cd draftsmith
 pip install -e .
 ```
 
+Set up your API keys as environment variables (never hardcode them):
+
+```bash
+# Required — at least one LLM provider
+export PACKYAPI_API_KEY="your-key-here"
+export GEMINI_API_KEY="your-key-here"
+
+# Optional — additional providers
+export ANTHROPIC_API_KEY="your-key-here"
+export OPENAI_API_KEY="your-key-here"
+```
+
 Point to your data directory:
 
 ```bash
@@ -127,6 +139,7 @@ python3 -m writing_brain.cli accept-delivery \
 | `resolve-exception` | Surface blockers for author decision / 汇总需要裁决的异常 |
 | `build-delivery` | Rebuild package after quality gate passes / 重建交付包 |
 | `accept-delivery` | Confirm final output, trigger memory ingest / 验收交付，经验入库 |
+| `usage-stats` | Query LLM call statistics by run/date/month / 查询 LLM 调用统计 |
 
 ## Project Structure / 项目结构
 
@@ -146,9 +159,13 @@ draftsmith/
     revision.py           # Text resolution & artifact persistence
     publish.py            # Publish pack builder (Word + images)
     image_review.py       # Image package quality gate
+    image_supply.py       # Image supply status check
     public_images.py      # Public image collection (Wikimedia)
     release.py            # Multi-platform release
     post_review.py        # Post-review delivery pipeline
+    platforms.py          # Platform alias normalization
+    hygiene.py            # Data directory cleanup utilities
+    usage.py              # LLM call statistics
     llm.py                # Model call abstraction
   schemas/                # JSON schemas for all contracts
   docs/                   # Architecture docs
@@ -172,6 +189,21 @@ When the same feedback appears repeatedly, the system merges it: `support_count`
 Next time you write, the system reads patterns — not memos.
 
 下次写作前，系统读到的是规律，不是备忘录。
+
+## Configuration / 配置
+
+All API keys are loaded from environment variables — no secrets in the repo.
+
+所有 API Key 从环境变量读取，仓库里不存任何密钥。
+
+| Env Var | Provider |
+|---------|----------|
+| `PACKYAPI_API_KEY` | Packy API (default writer) |
+| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Google Gemini |
+| `ANTHROPIC_API_KEY` | Claude |
+| `OPENAI_API_KEY` / `PPCHAT_API_KEY` | OpenAI-compatible |
+
+Model routing can be customized via `config/models.json` (see `config/models.example.json`). This file is gitignored to prevent accidental key leaks.
 
 ## License
 

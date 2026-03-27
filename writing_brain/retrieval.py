@@ -4,15 +4,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .frontmatter import parse_markdown_file
+from .hygiene import iter_data_files, should_ignore_name
+from .platforms import normalize_platform
 from .text import keyword_score
-
-PLATFORM_ALIASES = {
-    "wechat": ["wechat", "公众号"],
-    "xiaohongshu": ["xiaohongshu", "小红书"],
-    "zhihu": ["zhihu", "知乎"],
-    "juejin": ["juejin", "掘金"],
-    "csdn": ["csdn"],
-}
 
 
 @dataclass(frozen=True)
@@ -29,7 +23,7 @@ def load_markdown_items(root: Path, id_key: str, title_key: str) -> list[Knowled
     if not root.exists():
         return []
     items: list[KnowledgeItem] = []
-    for path in sorted(root.rglob("*.md")):
+    for path in iter_data_files(root, suffixes={".md"}):
         meta, body = parse_markdown_file(path)
         item_id = str(meta.get(id_key) or path.stem)
         title = str(meta.get(title_key) or meta.get("name") or path.stem)
@@ -39,7 +33,7 @@ def load_markdown_items(root: Path, id_key: str, title_key: str) -> list[Knowled
 
 def rank_items(items: list[KnowledgeItem], query_terms: list[str], extra_text: str = "") -> list[KnowledgeItem]:
     ranked: list[KnowledgeItem] = []
-    platform_aliases = PLATFORM_ALIASES.get(extra_text.lower(), [extra_text.lower()] if extra_text else [])
+    normalized_platform = normalize_platform(extra_text, default="") if extra_text else ""
     for item in items:
         haystack = " ".join(
             [
@@ -49,8 +43,8 @@ def rank_items(items: list[KnowledgeItem], query_terms: list[str], extra_text: s
             ]
         )
         score = keyword_score(haystack, query_terms)
-        fit_platforms = [str(value).lower() for value in item.meta.get("fit_platforms") or []]
-        if extra_text and any(alias in fit_platforms for alias in platform_aliases):
+        fit_platforms = [normalize_platform(value, default="") for value in item.meta.get("fit_platforms") or []]
+        if normalized_platform and normalized_platform in fit_platforms:
             score += 3.0
         ranked.append(
             KnowledgeItem(
@@ -77,7 +71,7 @@ def load_published_articles(root: Path) -> list[KnowledgeItem]:
         return []
     items: list[KnowledgeItem] = []
     for child in sorted(root.iterdir()):
-        if not child.is_dir() or not _DATE_PREFIX_RE.match(child.name):
+        if should_ignore_name(child.name) or not child.is_dir() or not _DATE_PREFIX_RE.match(child.name):
             continue
         # Try common article filenames
         article_path = None

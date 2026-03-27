@@ -5,6 +5,8 @@ from typing import Any
 
 from .config import AppConfig
 from .frontmatter import parse_markdown_file
+from .hygiene import should_ignore_name
+from .platforms import normalize_platform_list
 
 
 def load_project_brief(config: AppConfig, project_slug: str) -> dict[str, Any]:
@@ -31,7 +33,10 @@ def load_project_brief(config: AppConfig, project_slug: str) -> dict[str, Any]:
 
     platforms = meta.get("target_platforms")
     if isinstance(platforms, list) and platforms:
-        result["target_platforms"] = [str(p) for p in platforms]
+        normalized_platforms = normalize_platform_list(platforms)
+        if normalized_platforms:
+            result["target_platforms"] = normalized_platforms
+            result["platform"] = normalized_platforms[0]
 
     # Extract claim refs from "已有 claims" section
     claim_refs = _extract_list_section(body, "已有 claims")
@@ -59,7 +64,7 @@ def list_projects(config: AppConfig) -> list[dict[str, str]]:
         return []
     projects = []
     for child in sorted(config.projects_dir.iterdir()):
-        if not child.is_dir():
+        if should_ignore_name(child.name) or not child.is_dir():
             continue
         brief = child / "brief.md"
         title = child.name
@@ -76,6 +81,8 @@ def list_templates(config: AppConfig) -> list[dict[str, str]]:
         return []
     templates = []
     for path in sorted(config.templates_dir.glob("*.md")):
+        if should_ignore_name(path.name):
+            continue
         templates.append({"name": path.stem, "path": str(path)})
     return templates
 
@@ -87,14 +94,15 @@ def _find_project_dir(projects_dir: Path, slug: str) -> Path | None:
     exact = projects_dir / slug
     if exact.is_dir():
         return exact
-    # Suffix match (slug without date prefix)
-    for child in projects_dir.iterdir():
-        if child.is_dir() and child.name.endswith(slug):
-            return child
-    # Substring match
-    for child in projects_dir.iterdir():
-        if child.is_dir() and slug in child.name:
-            return child
+    candidates = [
+        child
+        for child in sorted(projects_dir.iterdir())
+        if child.is_dir() and (child.name.endswith(slug) or slug in child.name)
+    ]
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        raise ValueError(f"Project slug is ambiguous: {slug} -> {[child.name for child in candidates]}")
     return None
 
 

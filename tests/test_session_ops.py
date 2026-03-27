@@ -202,6 +202,51 @@ class SessionOpsTests(unittest.TestCase):
             self.assertEqual(result["memory_record"]["contract_name"], "memory_ingest_record")
             self.assertTrue((root / "sessions" / "session_v2_demo.delivery.json").exists())
 
+    def test_accept_delivery_blocks_v2_when_post_review_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            config = load_config(tmp)
+            result = accept_delivery(
+                {
+                    "session_result": {
+                        "run_id": "session_v2_blocked",
+                        "status": "awaiting_acceptance",
+                        "assignment": {
+                            "topic": "AI 写作系统",
+                            "platform": "wechat",
+                            "context_pack": {"topic": "AI 写作系统", "platform": "wechat"},
+                        },
+                        "article_markdown": "# 标题\n\n先给判断。\n\n因为这里有具体例子和场景。\n\n所以这篇稿子可以交付。",
+                        "final_review_report": {
+                            "contract_name": "review_report",
+                            "decision": "pass",
+                            "total_score": 92,
+                            "lazy_index": 1,
+                        },
+                        "quality_evaluation": {
+                            "decision": "pass",
+                            "blocked_dimensions": [],
+                            "can_continue_to_delivery": True,
+                        },
+                        "delivery_manifest": {
+                            "status": "completed",
+                            "text_delivery": {"status": "passed"},
+                            "rich_delivery": {"status": "passed"},
+                            "image_gate": {"status": "passed"},
+                            "artifact_refs": [],
+                        },
+                        "post_review_result": {
+                            "status": "failed",
+                            "recommended_next_actions": ["重跑 post-review 流水线。"],
+                        },
+                        "artifact_refs": [],
+                    },
+                },
+                config,
+            )
+
+            self.assertEqual(result["status"], "blocked")
+            self.assertEqual(result["recommended_next_actions"], ["重跑 post-review 流水线。"])
+
 
 class CliSurfaceTests(unittest.TestCase):
     def test_help_focuses_on_high_level_session_commands(self) -> None:

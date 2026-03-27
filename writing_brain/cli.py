@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 from .config import ensure_runtime_dirs, load_config
 from .context_pack import build_context_pack
+from .hygiene import sanitize_data_dir
 from .image_review import build_image_review_report
 from .memory import build_daily_digest, ingest_memory_record
 from .project import list_projects, list_templates, load_project_brief
@@ -30,9 +31,9 @@ INTERNAL_COMMANDS = [
     "review-image-pack",
     "collect-public-images",
     "render-packy-images",
+    "sanitize-data-dir",
     "list-projects",
     "list-templates",
-    "usage-stats",
 ]
 
 
@@ -47,7 +48,7 @@ def main() -> int:
     subparsers = parser.add_subparsers(
         dest="command",
         required=True,
-        metavar="{start-session,continue-session,resolve-exception,build-delivery,accept-delivery}",
+        metavar="{start-session,continue-session,resolve-exception,build-delivery,accept-delivery,usage-stats}",
         action=_VisibleSubParsersAction,
     )
 
@@ -57,14 +58,14 @@ def main() -> int:
         ("resolve-exception", "读取会话结果并汇总需要你裁决的异常"),
         ("build-delivery", "对已过质量门的正文重建交付包"),
         ("accept-delivery", "确认最终交付物并触发 memory 入库"),
+        ("usage-stats", "查询模型调用统计（按 run_id、日期、月份或年份）"),
     ]:
         subparser = subparsers.add_parser(name, help=help_text)
-        subparser.add_argument("--input", help="JSON string, @file path, or - for stdin")
-        subparser.add_argument("--output", help="Write JSON result to a file")
-        subparser.add_argument("--project", help="Project slug to load brief from")
+        _add_subparser_common_args(subparser)
 
     for name in INTERNAL_COMMANDS:
         subparser = subparsers.add_parser(name, help=argparse.SUPPRESS)
+        subparser.add_argument("--data-dir", help="Override WRITING_BRAIN_DATA_DIR")
         if name in {"list-projects", "list-templates"}:
             continue
         subparser.add_argument("--input", help="JSON string, @file path, or - for stdin")
@@ -121,6 +122,8 @@ def main() -> int:
         result = collect_public_images(payload, config)
     elif args.command == "render-packy-images":
         result = render_packy_images(payload)
+    elif args.command == "sanitize-data-dir":
+        result = sanitize_data_dir(payload, config)
     elif args.command == "usage-stats":
         from .usage import query as usage_query
         result = usage_query(
@@ -150,6 +153,13 @@ def _load_json(raw: Optional[str]) -> dict[str, Any]:
     if raw.startswith("@"):
         return json.loads(Path(raw[1:]).read_text(encoding="utf-8"))
     return json.loads(raw)
+
+
+def _add_subparser_common_args(subparser: argparse.ArgumentParser) -> None:
+    subparser.add_argument("--data-dir", help="Override WRITING_BRAIN_DATA_DIR")
+    subparser.add_argument("--input", help="JSON string, @file path, or - for stdin")
+    subparser.add_argument("--output", help="Write JSON result to a file")
+    subparser.add_argument("--project", help="Project slug to load brief from")
 
 
 if __name__ == "__main__":

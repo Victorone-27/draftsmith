@@ -17,8 +17,9 @@ from writing_brain.pipelines.quality_session import (
 
 
 class QualitySessionTests(unittest.TestCase):
+    @patch("writing_brain.pipelines.quality_session.run_post_review_pipeline")
     @patch("writing_brain.pipelines.quality_session.build_review_report")
-    def test_run_quality_session_persists_new_stage_artifacts(self, mock_review: object) -> None:
+    def test_run_quality_session_persists_new_stage_artifacts(self, mock_review: object, mock_post_review: object) -> None:
         mock_review.return_value = {
             "contract_name": "review_report",
             "contract_version": "v1",
@@ -41,6 +42,15 @@ class QualitySessionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             config = load_config(tmp)
+            mock_post_review.return_value = {
+                "contract_name": "post_review_pipeline_result",
+                "contract_version": "v1",
+                "run_id": "quality_session_demo",
+                "status": "completed",
+                "stages": [],
+                "artifact_refs": [str(root / "sessions" / "quality_session_demo.post-review.stage.json")],
+                "recommended_next_actions": ["可进入最终验收。"],
+            }
             result = run_quality_session(
                 {
                     "run_id": "quality_session_demo",
@@ -68,9 +78,13 @@ class QualitySessionTests(unittest.TestCase):
             self.assertTrue((root / "sessions" / "quality_session_demo.quality.json").exists())
             self.assertTrue((root / "sessions" / "quality_session_demo.image-brief.json").exists())
             self.assertTrue((root / "sessions" / "quality_session_demo.delivery.json").exists())
+            self.assertTrue((root / "sessions" / "quality_session_demo.post-review.json").exists())
             saved = json.loads((root / "sessions" / "quality_session_demo.image-brief.json").read_text(encoding="utf-8"))
             self.assertEqual(saved["contract_name"], "image_brief")
             self.assertEqual(saved["slots"][0]["role"], "cover_opinion")
+            self.assertEqual(result["post_review_result"]["status"], "completed")
+            self.assertEqual(mock_post_review.call_args.kwargs["run_id"], "quality_session_demo")
+            self.assertEqual(mock_post_review.call_args.args[0]["target_platforms"], ["wechat"])
 
     def test_build_delivery_blocks_rich_delivery_when_image_gate_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

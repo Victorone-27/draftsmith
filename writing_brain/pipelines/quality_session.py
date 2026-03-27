@@ -7,6 +7,8 @@ from typing import Any
 from ..config import AppConfig, ensure_runtime_dirs
 from ..context_pack import build_context_pack
 from ..memory import ingest_memory_record
+from ..platforms import normalize_platform, normalize_platform_list
+from ..post_review import run_post_review_pipeline
 from ..prompt_assets import load_prompt_asset
 from ..publish import build_publish_pack
 from ..review import build_review_report
@@ -78,6 +80,26 @@ def _run_quality_session_body(payload: dict[str, Any], config: AppConfig, *, run
         },
         config,
     )
+    post_review_result = run_post_review_pipeline(
+        {
+            **payload,
+            "run_id": run_id,
+            "platform": assignment["platform"],
+            "target_platforms": list(assignment.get("target_platforms") or []),
+            "topic": assignment["topic"],
+            "title": assignment["title"],
+        },
+        config,
+        run_id=run_id,
+        final_article_markdown=article_markdown,
+        final_review_report=quality_evaluation["legacy_review_report"],
+        context_pack={
+            **context_pack,
+            "platform": assignment["platform"],
+            "target_platforms": list(assignment.get("target_platforms") or []),
+            "title": assignment["title"],
+        },
+    )
 
     artifact_refs = _persist_session_artifacts(
         config,
@@ -91,14 +113,22 @@ def _run_quality_session_body(payload: dict[str, Any], config: AppConfig, *, run
         quality_evaluation=quality_evaluation,
         image_brief=image_brief,
         delivery_manifest=delivery_manifest,
+        post_review_result=post_review_result,
     )
     artifact_refs.extend(str(item) for item in delivery_manifest.get("artifact_refs") or [])
+    if post_review_result is not None:
+        artifact_refs.extend(str(item) for item in post_review_result.get("artifact_refs") or [])
 
     result = {
         "contract_name": "session_start_result",
         "contract_version": "v2",
         "run_id": run_id,
-        "status": _session_status(article_markdown=article_markdown, quality_evaluation=quality_evaluation, delivery_manifest=delivery_manifest),
+        "status": _session_status(
+            article_markdown=article_markdown,
+            quality_evaluation=quality_evaluation,
+            delivery_manifest=delivery_manifest,
+            post_review_result=post_review_result,
+        ),
         "session_path": str(config.sessions_dir / f"{run_id}.session.json"),
         "assignment": assignment,
         "research_pack": research_pack,
@@ -115,11 +145,13 @@ def _run_quality_session_body(payload: dict[str, Any], config: AppConfig, *, run
         "final_review_report": quality_evaluation["legacy_review_report"],
         "image_brief": image_brief,
         "delivery_manifest": delivery_manifest,
+        "post_review_result": post_review_result,
         "artifact_refs": list(dict.fromkeys(artifact_refs)),
         "recommended_next_actions": _recommended_next_actions(
             article_markdown=article_markdown,
             quality_evaluation=quality_evaluation,
             delivery_manifest=delivery_manifest,
+            post_review_result=post_review_result,
         ),
     }
     write_json(config.sessions_dir / f"{run_id}.session.json", result)
@@ -226,7 +258,12 @@ def build_delivery(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]
 def build_assignment_contract(payload: dict[str, Any], *, context_pack: dict[str, Any], run_id: str) -> dict[str, Any]:
     topic = str(payload.get("topic") or context_pack.get("topic") or "未命名主题").strip()
     user_goal = str(payload.get("user_goal") or context_pack.get("user_goal") or "写出一篇可直接交付的文章").strip()
-    platform = str(payload.get("platform") or context_pack.get("platform") or "wechat").strip().lower() or "wechat"
+    target_platforms = normalize_platform_list(payload.get("target_platforms") or context_pack.get("target_platforms"))
+    platform = normalize_platform(payload.get("platform") or context_pack.get("platform") or (target_platforms[0] if target_platforms else "wechat"))
+    if not target_platforms:
+        target_platforms = [platform]
+    elif platform not in target_platforms:
+        target_platforms = [platform, *[item for item in target_platforms if item != platform]]
     tone_target = str(payload.get("tone_target") or context_pack.get("tone_target") or "判断先行，论证连续，避免模板腔").strip()
     title = str(payload.get("title") or topic).strip()
     return {
@@ -236,6 +273,7 @@ def build_assignment_contract(payload: dict[str, Any], *, context_pack: dict[str
         "topic": topic,
         "title": title,
         "platform": platform,
+        "target_platforms": target_platforms,
         "audience": str(payload.get("audience") or context_pack.get("audience") or "").strip(),
         "user_goal": user_goal,
         "tone_target": tone_target,
@@ -514,7 +552,13 @@ def build_image_brief(
 def maybe_accept_delivery(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
     session_result = _load_session_result(payload, config)
     delivery_manifest = dict(session_result.get("delivery_manifest") or {})
-    if session_result.get("status") in {"blocked", "exception"} or delivery_manifest.get("status") == "blocked":
+    post_review_result = dict(session_result.get("post_review_result") or {})
+    post_review_status = str(post_review_result.get("status") or "").strip().lower()
+    if (
+        session_result.get("status") in {"blocked", "exception"}
+        or delivery_manifest.get("status") == "blocked"
+        or post_review_status in {"failed", "partial"}
+    ):
         return {
             "contract_name": "delivery_acceptance_result",
             "contract_version": "v2",
@@ -523,7 +567,11 @@ def maybe_accept_delivery(payload: dict[str, Any], config: AppConfig) -> dict[st
             "session_result": session_result,
             "memory_record": None,
             "artifact_refs": list(session_result.get("artifact_refs") or []),
-            "recommended_next_actions": list(session_result.get("recommended_next_actions") or ["先处理质量或交付阻塞项。"]),
+            "recommended_next_actions": list(
+                session_result.get("recommended_next_actions")
+                or post_review_result.get("recommended_next_actions")
+                or ["先处理质量或交付阻塞项。"]
+            ),
         }
 
     memory_record = ingest_memory_record(
@@ -547,13 +595,7 @@ def maybe_accept_delivery(payload: dict[str, Any], config: AppConfig) -> dict[st
         "status": "accepted",
         "session_result": session_result,
         "delivery_summary": {
-            "outputs": [
-                {
-                    "platform": str(session_result.get("assignment", {}).get("platform") or ""),
-                    "text_status": str(delivery_manifest.get("text_delivery", {}).get("status") or ""),
-                    "rich_status": str(delivery_manifest.get("rich_delivery", {}).get("status") or ""),
-                }
-            ]
+            "outputs": _delivery_outputs(session_result, delivery_manifest=delivery_manifest, post_review_result=post_review_result),
         },
         "memory_record": memory_record,
         "artifact_refs": list(
@@ -646,6 +688,7 @@ def _persist_session_artifacts(
     quality_evaluation: dict[str, Any],
     image_brief: dict[str, Any],
     delivery_manifest: dict[str, Any],
+    post_review_result: dict[str, Any] | None,
 ) -> list[str]:
     refs: list[str] = []
     for suffix, payload in [
@@ -659,6 +702,10 @@ def _persist_session_artifacts(
     ]:
         path = config.sessions_dir / f"{run_id}.{suffix}.json"
         write_json(path, payload)
+        refs.append(str(path))
+    if post_review_result is not None:
+        path = config.sessions_dir / f"{run_id}.post-review.json"
+        write_json(path, post_review_result)
         refs.append(str(path))
     if draft_text:
         refs.append(str(config.sessions_dir / f"{run_id}.draft.md"))
@@ -687,24 +734,93 @@ def _load_session_result(payload: dict[str, Any], config: AppConfig) -> dict[str
     raise ValueError("run_id、session_path 或 session_result 至少要提供一个")
 
 
-def _session_status(*, article_markdown: str, quality_evaluation: dict[str, Any], delivery_manifest: dict[str, Any]) -> str:
+def _session_status(
+    *,
+    article_markdown: str,
+    quality_evaluation: dict[str, Any],
+    delivery_manifest: dict[str, Any],
+    post_review_result: dict[str, Any] | None,
+) -> str:
     if not article_markdown:
         return "blocked"
     if not quality_evaluation.get("can_continue_to_delivery"):
         return "exception"
     if delivery_manifest.get("status") == "blocked":
         return "exception"
+    if post_review_result and str(post_review_result.get("status") or "").strip().lower() in {"failed", "partial"}:
+        return "exception"
     return "awaiting_acceptance"
 
 
-def _recommended_next_actions(*, article_markdown: str, quality_evaluation: dict[str, Any], delivery_manifest: dict[str, Any]) -> list[str]:
+def _recommended_next_actions(
+    *,
+    article_markdown: str,
+    quality_evaluation: dict[str, Any],
+    delivery_manifest: dict[str, Any],
+    post_review_result: dict[str, Any] | None,
+) -> list[str]:
     if not article_markdown:
         return ["当前还没有可交付正文，先补足 compose 输入或改用人工母稿继续推进。"]
     if not quality_evaluation.get("can_continue_to_delivery"):
         return list(dict.fromkeys(quality_evaluation.get("repair_strategy") or ["先修质量闸门问题。"]))
     if delivery_manifest.get("image_gate", {}).get("status") == "blocked":
         return list(dict.fromkeys(delivery_manifest.get("recommended_next_actions") or ["正文已过关，当前卡在图片闸门。"]))
+    if post_review_result:
+        status = str(post_review_result.get("status") or "").strip().lower()
+        if status in {"failed", "partial"}:
+            return list(dict.fromkeys(post_review_result.get("recommended_next_actions") or ["发布后处理流水线仍有阻塞项。"]))
+        if post_review_result.get("recommended_next_actions"):
+            return list(dict.fromkeys(post_review_result.get("recommended_next_actions") or []))
     return ["正文和纯文本交付已生成。若图文包通过审核，可直接进入最终验收。"]
+
+
+def _delivery_outputs(
+    session_result: dict[str, Any],
+    *,
+    delivery_manifest: dict[str, Any],
+    post_review_result: dict[str, Any],
+) -> list[dict[str, str]]:
+    outputs: list[dict[str, str]] = []
+    for stage in post_review_result.get("stages") or []:
+        stage_name = str(stage.get("stage") or "").strip().lower()
+        stage_result = dict(stage.get("result") or {})
+        if stage_name == "release_cycle":
+            for platform_result in stage_result.get("platform_results") or []:
+                publish_result = dict(platform_result.get("publish_result") or {})
+                artifact_refs = [str(item) for item in publish_result.get("artifact_refs") or []]
+                image_review = dict(publish_result.get("image_review_report") or {})
+                outputs.append(
+                    {
+                        "platform": str(platform_result.get("platform") or ""),
+                        "text_status": "passed" if any(ref.endswith("可直接发布-纯文本可复制.docx") for ref in artifact_refs) else "blocked",
+                        "rich_status": "passed"
+                        if str(image_review.get("decision") or "").strip().lower() == "pass"
+                        and any(ref.endswith("图文可发布.docx") for ref in artifact_refs)
+                        else "blocked",
+                    }
+                )
+        elif stage_name == "publish_pack":
+            artifact_refs = [str(item) for item in stage_result.get("artifact_refs") or []]
+            image_review = dict(stage_result.get("image_review_report") or {})
+            outputs.append(
+                {
+                    "platform": normalize_platform(stage_result.get("platform") or session_result.get("assignment", {}).get("platform") or "", default=""),
+                    "text_status": "passed" if any(ref.endswith("可直接发布-纯文本可复制.docx") for ref in artifact_refs) else "blocked",
+                    "rich_status": "passed"
+                    if str(image_review.get("decision") or "").strip().lower() == "pass"
+                    and any(ref.endswith("图文可发布.docx") for ref in artifact_refs)
+                    else "blocked",
+                }
+            )
+    if outputs:
+        return outputs
+    return [
+        {
+            "platform": str(session_result.get("assignment", {}).get("platform") or ""),
+            "text_status": str(delivery_manifest.get("text_delivery", {}).get("status") or ""),
+            "rich_status": str(delivery_manifest.get("rich_delivery", {}).get("status") or ""),
+        }
+    ]
 
 
 def _derive_main_claim(assignment: dict[str, Any], research_pack: dict[str, Any]) -> str:

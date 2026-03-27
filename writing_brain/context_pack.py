@@ -5,6 +5,7 @@ from typing import Any
 from .config import AppConfig
 from .frontmatter import parse_markdown_file
 from .knowledge import load_knowledge_entities
+from .platforms import normalize_platform, normalize_platform_list
 from .retrieval import load_markdown_items, load_published_articles, rank_items
 from .text import extract_terms, now_run_id
 
@@ -33,7 +34,10 @@ DEFAULT_PLATFORM_RULES = {
 
 def build_context_pack(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
     topic = str(payload.get("topic") or "").strip()
-    platform = str(payload.get("platform") or "wechat").strip().lower()
+    target_platforms = normalize_platform_list(payload.get("target_platforms"))
+    platform = normalize_platform(payload.get("platform") or (target_platforms[0] if target_platforms else "wechat"))
+    if not target_platforms:
+        target_platforms = [platform]
     user_goal = str(payload.get("user_goal") or "").strip()
     audience = str(payload.get("audience") or "").strip()
     tone_target = str(payload.get("tone_target") or "锋利但克制").strip()
@@ -99,6 +103,7 @@ def build_context_pack(payload: dict[str, Any], config: AppConfig) -> dict[str, 
         "run_id": run_id,
         "topic": topic,
         "platform": platform,
+        "target_platforms": target_platforms,
         "audience": audience,
         "user_goal": user_goal,
         "tone_target": tone_target,
@@ -244,7 +249,7 @@ def _image_plan_hint(body: str) -> str:
 
 
 def _structure_reason(structure: Any, platform: str) -> str:
-    fit_platforms = [str(item).lower() for item in structure.meta.get("fit_platforms") or []]
+    fit_platforms = [normalize_platform(item, default="") for item in structure.meta.get("fit_platforms") or []]
     if platform in fit_platforms:
         return f"模板明确适配 {platform}"
     return "与当前主题和目标较匹配"
@@ -258,7 +263,7 @@ def _load_recent_knowledge(config: AppConfig, *, topic: str, platform: str) -> t
     topic_tokens = {t.lower() for t in extract_terms(topic) if t.strip()}
     for entity in load_knowledge_entities(config.knowledge_entities_dir)[:20]:
         applies_to = entity.get("applies_to") or {}
-        entity_platform = str(applies_to.get("platform") or "").lower()
+        entity_platform = normalize_platform(applies_to.get("platform"), default="")
         topic_keywords = {str(item).lower() for item in applies_to.get("topic_keywords") or []}
         if entity_platform and entity_platform != platform:
             continue

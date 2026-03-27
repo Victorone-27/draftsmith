@@ -19,29 +19,9 @@ from .config import AppConfig
 from .image_review import build_image_review_report
 from .image_supply import GENERATED_INDEX_FILENAME, read_image_index, write_image_index
 from .llm import normalize_base_url
+from .platforms import PLATFORM_FILE_STEMS, PLATFORM_NAMES, normalize_platform, platform_display_name, platform_file_stem
 from .retrieval import load_markdown_items, rank_items
 from .text import compact_whitespace, extract_terms, slug_for_filename, split_paragraphs
-
-
-PLATFORM_NAMES = {
-    "wechat": "公众号",
-    "zhihu": "知乎",
-    "xiaohongshu": "小红书",
-    "csdn": "CSDN",
-    "juejin": "掘金",
-    "toutiao": "今日头条",
-    "renrendoushichanpinjingli": "人人都是产品经理",
-}
-
-PLATFORM_FILE_STEMS = {
-    "wechat": "公众号版",
-    "zhihu": "知乎版",
-    "xiaohongshu": "小红书版",
-    "csdn": "CSDN版",
-    "juejin": "掘金版",
-    "toutiao": "头条版",
-    "renrendoushichanpinjingli": "人人都是产品经理版",
-}
 
 DEFAULT_IMAGE_MODEL = "nano2"
 DEFAULT_PACKY_IMAGE_MODEL = "gemini-3.1-flash-image-preview"
@@ -96,7 +76,7 @@ def build_publish_pack(payload: dict[str, Any], config: AppConfig) -> dict[str, 
         raise ValueError("article_markdown 不能为空")
 
     context_pack = dict(payload.get("context_pack") or {})
-    platform = str(payload.get("platform") or context_pack.get("platform") or "wechat").strip().lower()
+    platform = normalize_platform(payload.get("platform") or context_pack.get("platform") or "wechat")
     topic = str(payload.get("topic") or context_pack.get("topic") or "").strip()
     title = str(payload.get("title") or _extract_title(article_markdown) or topic or "未命名文章").strip()
     image_count = max(3, min(int(payload.get("image_count") or DEFAULT_IMAGE_COUNT), 5))
@@ -797,11 +777,11 @@ def _extract_title(article_markdown: str) -> str:
 
 
 def _platform_name(platform: str) -> str:
-    return PLATFORM_NAMES.get(platform, platform)
+    return platform_display_name(platform)
 
 
 def _platform_file_stem(platform: str) -> str:
-    return PLATFORM_FILE_STEMS.get(platform, f"{_platform_name(platform)}版")
+    return platform_file_stem(platform)
 
 
 def _style_hint(image_plan_body: str) -> str:
