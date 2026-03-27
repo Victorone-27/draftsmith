@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -218,7 +219,7 @@ def _fetch_slot_image(*, slot: dict[str, str], public_dir: Path, existing_index:
     chosen: dict[str, str] | None = None
     used_query = query
     for candidate_query in _query_variants_for_commons(query):
-        candidates = _search_commons(candidate_query)
+        candidates = _search_public_sources(candidate_query)
         if not candidates:
             continue
         filtered = _filter_relevant_candidates(candidates, slot=slot, query=candidate_query)
@@ -253,10 +254,19 @@ def _fetch_slot_image(*, slot: dict[str, str], public_dir: Path, existing_index:
         "author": chosen.get("author", ""),
         "license_status": "verified" if chosen.get("license") else "unknown",
         "publishable": bool(chosen.get("page_url") and chosen.get("license")),
-        "publishability_reason": (
-            "wikimedia_commons_with_license" if chosen.get("page_url") and chosen.get("license") else "missing_license_or_source"
-        ),
+        "publishability_reason": _publishability_reason(chosen),
     }
+
+
+def _publishability_reason(candidate: dict[str, str]) -> str:
+    if not candidate.get("page_url") or not candidate.get("license"):
+        return "missing_license_or_source"
+    license_lower = candidate.get("license", "").lower()
+    if "unsplash" in license_lower:
+        return "unsplash_license"
+    if "pexels" in license_lower:
+        return "pexels_license"
+    return "wikimedia_commons_with_license"
 
 
 def _query_variants_for_commons(query: str) -> list[str]:
@@ -368,6 +378,63 @@ def _search_commons(query: str) -> list[dict[str, str]]:
     return results
 
 
+def _search_unsplash(query: str) -> list[dict[str, str]]:
+    access_key = (os.environ.get("UNSPLASH_ACCESS_KEY") or "").strip()
+    if not access_key:
+        return []
+    params = urlencode({"query": query, "per_page": "5", "orientation": "landscape"})
+    url = f"https://api.unsplash.com/search/photos?{params}"
+    body = _request_json(url, headers={"Authorization": f"Client-ID {access_key}"})
+    results: list[dict[str, str]] = []
+    for item in body.get("results") or []:
+        download_url = str((item.get("urls") or {}).get("regular") or "").strip()
+        page_url = str((item.get("links") or {}).get("html") or "").strip()
+        if not download_url or not page_url:
+            continue
+        results.append({
+            "title": str(item.get("alt_description") or "").strip(),
+            "page_url": page_url,
+            "download_url": download_url,
+            "license": "Unsplash License",
+            "author": str((item.get("user") or {}).get("name") or "").strip(),
+        })
+    return results
+
+
+def _search_pexels(query: str) -> list[dict[str, str]]:
+    api_key = (os.environ.get("PEXELS_API_KEY") or "").strip()
+    if not api_key:
+        return []
+    params = urlencode({"query": query, "per_page": "5", "orientation": "landscape"})
+    url = f"https://api.pexels.com/v1/search?{params}"
+    body = _request_json(url, headers={"Authorization": api_key})
+    results: list[dict[str, str]] = []
+    for item in body.get("photos") or []:
+        download_url = str((item.get("src") or {}).get("large") or "").strip()
+        page_url = str(item.get("url") or "").strip()
+        if not download_url or not page_url:
+            continue
+        results.append({
+            "title": str(item.get("alt") or "").strip(),
+            "page_url": page_url,
+            "download_url": download_url,
+            "license": "Pexels License",
+            "author": str(item.get("photographer") or "").strip(),
+        })
+    return results
+
+
+def _search_public_sources(query: str) -> list[dict[str, str]]:
+    for search_fn in (_search_unsplash, _search_pexels, _search_commons):
+        try:
+            results = search_fn(query)
+            if results:
+                return results
+        except Exception:
+            continue
+    return []
+
+
 def _filter_relevant_candidates(candidates: list[dict[str, str]], *, slot: dict[str, str], query: str) -> list[dict[str, str]]:
     scored: list[tuple[int, dict[str, str]]] = []
     slot_text = f"{slot.get('filename') or ''} {slot.get('query') or ''} {query}".lower()
@@ -454,8 +521,11 @@ def _required_visual_tokens(text: str) -> list[str]:
     return tokens
 
 
-def _request_json(url: str) -> dict[str, Any]:
-    request = Request(url, headers={"User-Agent": "writing-brain/0.1"})
+def _request_json(url: str, headers: dict[str, str] | None = None) -> dict[str, Any]:
+    merged = {"User-Agent": "writing-brain/0.1"}
+    if headers:
+        merged.update(headers)
+    request = Request(url, headers=merged)
     with urlopen(request, timeout=30) as response:
         return json.loads(response.read().decode("utf-8"))
 

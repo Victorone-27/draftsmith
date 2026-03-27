@@ -12,7 +12,13 @@ from writing_brain.config import AppConfig
 from writing_brain.image_supply import GENERATED_INDEX_FILENAME, PUBLIC_INDEX_FILENAME
 from writing_brain.image_review import build_image_review_report
 from writing_brain.post_review import run_post_review_pipeline
-from writing_brain.public_images import _query_variants_for_commons, _search_commons, collect_public_images
+from writing_brain.public_images import (
+    _query_variants_for_commons,
+    _search_commons,
+    _search_pexels,
+    _search_unsplash,
+    collect_public_images,
+)
 from writing_brain.publish import _public_search_query, build_publish_pack
 
 
@@ -611,6 +617,85 @@ class PublicImageTests(unittest.TestCase):
             self.assertEqual(report["governance"]["consensus_decision"], "revise")
             self.assertTrue(any(item["issue_type"] == "image_tone_mismatch" for item in report["top_issues"]))
             self.assertIn("替换不贴题或过于海报化的素材", report["required_actions"][0])
+
+    def test_search_unsplash_returns_normalized_candidates(self) -> None:
+        api_response = {
+            "results": [
+                {
+                    "alt_description": "business meeting in modern office",
+                    "urls": {"regular": "https://images.unsplash.com/photo-123"},
+                    "links": {"html": "https://unsplash.com/photos/123"},
+                    "user": {"name": "Jane Doe"},
+                }
+            ]
+        }
+        with patch.dict("os.environ", {"UNSPLASH_ACCESS_KEY": "test-key"}), patch(
+            "writing_brain.public_images._request_json", return_value=api_response
+        ):
+            results = _search_unsplash("business meeting")
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["title"], "business meeting in modern office")
+        self.assertEqual(results[0]["license"], "Unsplash License")
+        self.assertEqual(results[0]["author"], "Jane Doe")
+        self.assertEqual(results[0]["page_url"], "https://unsplash.com/photos/123")
+        self.assertEqual(results[0]["download_url"], "https://images.unsplash.com/photo-123")
+
+    def test_search_unsplash_returns_empty_without_api_key(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            results = _search_unsplash("anything")
+        self.assertEqual(results, [])
+
+    def test_search_pexels_returns_normalized_candidates(self) -> None:
+        api_response = {
+            "photos": [
+                {
+                    "alt": "team collaboration",
+                    "src": {"large": "https://images.pexels.com/photos/456/large.jpg"},
+                    "url": "https://www.pexels.com/photo/456",
+                    "photographer": "John Smith",
+                }
+            ]
+        }
+        with patch.dict("os.environ", {"PEXELS_API_KEY": "test-key"}), patch(
+            "writing_brain.public_images._request_json", return_value=api_response
+        ):
+            results = _search_pexels("team collaboration")
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["title"], "team collaboration")
+        self.assertEqual(results[0]["license"], "Pexels License")
+        self.assertEqual(results[0]["author"], "John Smith")
+        self.assertEqual(results[0]["page_url"], "https://www.pexels.com/photo/456")
+
+    def test_search_pexels_returns_empty_without_api_key(self) -> None:
+        with patch.dict("os.environ", {}, clear=True):
+            results = _search_pexels("anything")
+        self.assertEqual(results, [])
+
+    def test_fallback_chain_stops_at_first_hit(self) -> None:
+        unsplash_results = [
+            {
+                "title": "AI conference photo",
+                "page_url": "https://unsplash.com/photos/abc",
+                "download_url": "https://images.unsplash.com/photo-abc",
+                "license": "Unsplash License",
+                "author": "Unsplash Author",
+            }
+        ]
+        with patch("writing_brain.public_images._search_unsplash", return_value=unsplash_results), patch(
+            "writing_brain.public_images._search_pexels", return_value=[]
+        ) as mock_pexels, patch(
+            "writing_brain.public_images._search_commons", return_value=[]
+        ) as mock_commons:
+            from writing_brain.public_images import _search_public_sources
+
+            results = _search_public_sources("AI meeting")
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["license"], "Unsplash License")
+        mock_pexels.assert_not_called()
+        mock_commons.assert_not_called()
 
 
 if __name__ == "__main__":
