@@ -18,7 +18,7 @@ def start_session(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
     normalized = {
         **payload,
         "enable_post_review_pipeline": bool(payload.get("enable_post_review_pipeline", True)),
-        "post_review_profile": str(payload.get("post_review_profile") or "debug").strip().lower() or "debug",
+        "post_review_profile": str(payload.get("post_review_profile") or "delivery").strip().lower() or "delivery",
     }
     result = run_quality_session(normalized, config)
     exception_report = build_exception_report(result)

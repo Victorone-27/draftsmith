@@ -4,9 +4,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .config import AppConfig
+from .image_supply import IMAGE_EXTENSIONS, find_slot_file
 from .platforms import normalize_platform, normalize_platform_list, platform_display_name
 from .public_images import collect_public_images
-from .publish import PLATFORM_NAMES, build_publish_pack
+from .publish import PLATFORM_NAMES, build_publish_pack, render_packy_images
 from .release import run_release_cycle
 
 
@@ -129,6 +130,7 @@ def _stage_handlers() -> dict[str, StageHandler]:
         "publish_pack": _run_publish_pack_stage,
         "release_cycle": _run_release_cycle_stage,
         "collect_public_images": _run_collect_public_images_stage,
+        "render_images": _run_render_images_stage,
     }
 
 
@@ -146,6 +148,7 @@ def _normalize_stages(raw: Any, payload: dict[str, Any]) -> list[dict[str, Any]]
             return [
                 {"stage": "release_cycle", "input": {"platforms": target_platforms}},
                 {"stage": "collect_public_images"},
+                {"stage": "render_images"},
             ]
         if profile in {"debug", "light", "minimal"}:
             return [
@@ -154,6 +157,7 @@ def _normalize_stages(raw: Any, payload: dict[str, Any]) -> list[dict[str, Any]]
         return [
             {"stage": "publish_pack"},
             {"stage": "collect_public_images"},
+            {"stage": "render_images"},
         ]
 
     stages: list[dict[str, Any]] = []
@@ -265,6 +269,102 @@ def _run_collect_public_images_stage(payload: dict[str, Any], config: AppConfig,
 
 def _post_review_profile(payload: dict[str, Any]) -> str:
     return str(payload.get("post_review_profile") or "delivery").strip().lower() or "delivery"
+
+
+def _run_render_images_stage(payload: dict[str, Any], config: AppConfig, stage_spec: dict[str, Any]) -> dict[str, Any]:
+    stage_input = dict(stage_spec.get("input") or {})
+    # Multi-platform: iterate each platform's publish pack
+    release_result = payload.get("release_cycle_result")
+    if release_result:
+        return _render_images_for_release_cycle(payload, config, release_result, stage_input)
+    # Single-platform
+    output_dir = str(stage_input.get("output_dir") or payload.get("publish_pack_output_dir") or "").strip()
+    if not output_dir:
+        return {"status": "skipped", "artifact_refs": [], "recommended_next_actions": ["无发布包目录，跳过图片生成。"]}
+    return _render_images_for_single_pack(payload, config, Path(output_dir))
+
+
+def _render_images_for_single_pack(payload: dict[str, Any], config: AppConfig, output_dir: Path) -> dict[str, Any]:
+    import json as _json
+    image_dir = output_dir / "图片"
+    tasks_path = image_dir / "生成任务.json"
+    if not tasks_path.exists():
+        return {"status": "skipped", "artifact_refs": [], "recommended_next_actions": []}
+    try:
+        tasks = _json.loads(tasks_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"status": "skipped", "artifact_refs": [], "recommended_next_actions": ["生成任务.json 解析失败。"]}
+    if not tasks:
+        return {"status": "skipped", "artifact_refs": [], "recommended_next_actions": []}
+
+    generated_dir = image_dir / "已生成"
+    public_dir = image_dir / "公开来源"
+    missing_tasks = []
+    for task in tasks:
+        filename = str(task.get("filename") or "").strip()
+        if not filename:
+            continue
+        if find_slot_file(generated_dir, filename) or find_slot_file(public_dir, filename):
+            continue
+        missing_tasks.append(task)
+
+    if not missing_tasks:
+        return {"status": "completed", "artifact_refs": [], "recommended_next_actions": []}
+
+    # Write filtered tasks and render
+    missing_tasks_path = image_dir / "待生成任务.json"
+    missing_tasks_path.write_text(_json.dumps(missing_tasks, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    render_result = render_packy_images({**payload, "tasks_path": str(missing_tasks_path)})
+
+    generated_count = sum(1 for r in render_result.get("results") or [] if r.get("status") == "ok")
+    artifact_refs = [str(p) for p in render_result.get("artifact_refs") or []]
+    next_actions = list(render_result.get("recommended_next_actions") or [])
+
+    # Refresh publish pack if any images were generated
+    if generated_count > 0:
+        article_md = str(payload.get("article_markdown") or payload.get("final_article_markdown") or "").strip()
+        if article_md:
+            refresh = build_publish_pack(
+                {**payload, "article_markdown": article_md, "output_dir": str(output_dir)},
+                config,
+            )
+            artifact_refs.extend(str(p) for p in refresh.get("artifact_refs") or [])
+
+    status = "completed" if generated_count == len(missing_tasks) else "partial"
+    return {
+        "status": status,
+        "artifact_refs": list(dict.fromkeys(artifact_refs)),
+        "recommended_next_actions": next_actions,
+        "render_result": render_result,
+    }
+
+
+def _render_images_for_release_cycle(
+    payload: dict[str, Any], config: AppConfig, release_result: dict[str, Any], stage_input: dict[str, Any]
+) -> dict[str, Any]:
+    output_root = str(release_result.get("output_root") or "").strip()
+    if not output_root:
+        return {"status": "skipped", "artifact_refs": [], "recommended_next_actions": []}
+    all_artifacts: list[str] = []
+    all_actions: list[str] = []
+    any_partial = False
+    for pr in release_result.get("platform_results") or []:
+        platform_name = str(pr.get("platform_name") or "").strip()
+        if not platform_name:
+            continue
+        pack_dir = Path(output_root) / "投稿包" / platform_name
+        if not pack_dir.exists():
+            continue
+        sub = _render_images_for_single_pack(payload, config, pack_dir)
+        all_artifacts.extend(sub.get("artifact_refs") or [])
+        all_actions.extend(sub.get("recommended_next_actions") or [])
+        if sub.get("status") == "partial":
+            any_partial = True
+    return {
+        "status": "partial" if any_partial else "completed",
+        "artifact_refs": list(dict.fromkeys(all_artifacts)),
+        "recommended_next_actions": list(dict.fromkeys(all_actions)),
+    }
 
 
 def _resolve_debug_publish_output_dir(

@@ -119,7 +119,7 @@ def build_publish_pack(payload: dict[str, Any], config: AppConfig) -> dict[str, 
             "prompt": slot.prompt,
         }
         for slot in slots
-        if slot.source_type == "generated"
+        if "generated" in slot.allowed_source_types
     ]
     placements = _build_placements(slots)
     source_markdown = _build_source_markdown(
@@ -343,7 +343,7 @@ def render_packy_images(payload: dict[str, Any]) -> dict[str, Any]:
             aspect_ratio=str(task.get("aspect_ratio") or "4:3"),
             image_size=str(task.get("image_size") or "1K"),
         )
-        out_path = output_dir / f"{filename}.{ext}"
+        out_path = output_dir / f"{Path(filename).stem}.{ext}"
         out_path.write_bytes(normalized_bytes)
         _cleanup_slot_variants(output_dir, filename, keep_path=out_path)
         results.append(
@@ -1180,16 +1180,27 @@ def _call_gemini_native_image_api(
         for part in parts:
             inline = part.get("inlineData") or {}
             b64 = str(inline.get("data") or "").strip()
-            if not b64:
-                continue
-            raw = base64.b64decode(b64)
-            mime_type = str(inline.get("mimeType") or "image/png")
-            return {
-                "status": "ok",
-                "bytes": raw,
-                "extension": _mime_to_extension(mime_type, raw),
-                "mime_type": mime_type,
-            }
+            if b64:
+                raw = base64.b64decode(b64)
+                mime_type = str(inline.get("mimeType") or "image/png")
+                return {
+                    "status": "ok",
+                    "bytes": raw,
+                    "extension": _mime_to_extension(mime_type, raw),
+                    "mime_type": mime_type,
+                }
+            # Fallback: some relays return base64 as a data URI inside the text field
+            text_val = str(part.get("text") or "").strip()
+            data_uri_match = re.search(r"data:(image/[a-zA-Z+]+);base64,([A-Za-z0-9+/=\s]+)", text_val)
+            if data_uri_match:
+                mime_type = data_uri_match.group(1)
+                raw = base64.b64decode(data_uri_match.group(2))
+                return {
+                    "status": "ok",
+                    "bytes": raw,
+                    "extension": _mime_to_extension(mime_type, raw),
+                    "mime_type": mime_type,
+                }
         candidate_summaries.append(f"finish_reason={finish_reason},parts={len(parts)}")
     if candidate_summaries:
         return {"status": "error", "error": f"empty_candidate_parts: {'; '.join(candidate_summaries)}"}

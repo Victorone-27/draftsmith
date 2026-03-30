@@ -512,8 +512,8 @@ def build_image_brief(
             "filename": "封面",
             "role": "cover_opinion",
             "anchor": blueprint["main_claim"],
-            "source_priority": ["public", "generated"],
-            "allowed_source_types": ["public", "generated"],
+            "source_priority": ["generated", "public"],
+            "allowed_source_types": ["generated", "public"],
             "disallowed_styles": ["海报感", "赛博朋克", "机器人", "一眼 AI"],
         }
     ]
@@ -556,7 +556,7 @@ def maybe_accept_delivery(payload: dict[str, Any], config: AppConfig) -> dict[st
     post_review_status = str(post_review_result.get("status") or "").strip().lower()
     if (
         session_result.get("status") in {"blocked", "exception"}
-        or delivery_manifest.get("status") == "blocked"
+        or delivery_manifest.get("status") in {"blocked", "partial"}
         or post_review_status in {"failed", "partial"}
     ):
         return {

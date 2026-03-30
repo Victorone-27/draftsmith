@@ -208,7 +208,7 @@ class PublicImageTests(unittest.TestCase):
                 (generated_dir / f"{name}.png").write_bytes(MINI_PNG)
             _write_generated_index(output_dir)
 
-            with patch("writing_brain.public_images._search_commons", side_effect=_mock_search), patch(
+            with patch("writing_brain.public_images._search_public_sources", side_effect=_mock_search), patch(
                 "writing_brain.public_images._download_bytes",
                 return_value=MINI_PNG,
             ):
@@ -263,7 +263,7 @@ class PublicImageTests(unittest.TestCase):
             (public_dir / "配图-03.png").write_bytes(MINI_PNG)
             _write_generated_index(output_dir)
 
-            with patch("writing_brain.public_images._search_commons", side_effect=_mock_search), patch(
+            with patch("writing_brain.public_images._search_public_sources", side_effect=_mock_search), patch(
                 "writing_brain.public_images._download_bytes",
                 return_value=MINI_PNG,
             ):
@@ -319,7 +319,7 @@ class PublicImageTests(unittest.TestCase):
                     }
                 )
 
-            with patch("writing_brain.public_images._search_commons", side_effect=_mock_search), patch(
+            with patch("writing_brain.public_images._search_public_sources", side_effect=_mock_search), patch(
                 "writing_brain.public_images._download_bytes",
                 return_value=MINI_PNG,
             ):
@@ -378,7 +378,7 @@ class PublicImageTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with patch("writing_brain.public_images._search_commons", side_effect=search_side_effect), patch(
+            with patch("writing_brain.public_images._search_public_sources", side_effect=search_side_effect), patch(
                 "writing_brain.public_images._download_bytes",
                 return_value=MINI_PNG,
             ):
@@ -400,7 +400,7 @@ class PublicImageTests(unittest.TestCase):
             config = AppConfig(data_dir=root)
             output_dir = root / "publish" / "公众号"
 
-            with patch("writing_brain.public_images._search_commons", side_effect=_mock_search), patch(
+            with patch("writing_brain.public_images._search_public_sources", side_effect=_mock_search), patch(
                 "writing_brain.public_images._download_bytes",
                 return_value=MINI_PNG,
             ):
