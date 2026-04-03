@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import time
 from typing import Any
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+
+
+logger = logging.getLogger("writing_brain.llm")
 
 
 DEFAULT_BASE_URL = "https://www.packyapi.com/v1"
@@ -117,9 +122,11 @@ def call_gemini_native_chat(
         _maybe_record_usage(result, usage_context=usage_context)
         return result
     except Exception as exc:
+        logger.warning("Gemini native call failed: %s", exc)
         return {
             "mode": "prompt_only",
             "reply_text": f"Gemini native 调用失败，已退回 prompt_only。错误：{exc!r}",
+            "error_detail": str(exc),
             "provider": "google_genai",
             "model": model,
         }
@@ -128,7 +135,7 @@ def call_gemini_native_chat(
             try:
                 client.close()
             except Exception:
-                pass
+                logger.debug("Failed to close Gemini client", exc_info=True)
 
 
 def call_ppchat_chat(
@@ -193,7 +200,7 @@ def call_anthropic_messages(
         "max_tokens": max_tokens,
     }
     try:
-        body = _http_post_json(
+        body = _http_post_json_with_retry(
             endpoint,
             payload,
             headers={
@@ -205,9 +212,11 @@ def call_anthropic_messages(
             timeout=180,
         )
     except Exception as exc:
+        logger.warning("Anthropic call failed after retries: %s", exc)
         return {
             "mode": "prompt_only",
             "reply_text": f"Claude 调用失败，已退回 prompt_only。错误：{exc!r}",
+            "error_detail": str(exc),
             "provider": "anthropic",
             "model": model,
         }
@@ -228,9 +237,11 @@ def call_anthropic_messages(
         ).strip()
         raw_usage = dict(data.get("usage") or {})
     except Exception as exc:
+        logger.warning("Anthropic response parse failed: %s", exc)
         return {
             "mode": "prompt_only",
             "reply_text": f"Claude 调用失败，已退回 prompt_only。错误：{exc!r}",
+            "error_detail": str(exc),
             "provider": "anthropic",
             "model": model,
         }
@@ -286,7 +297,7 @@ def call_openai_compatible_chat(
     if response_format:
         payload["response_format"] = response_format
     try:
-        body = _http_post_json(
+        body = _http_post_json_with_retry(
             f"{base_url}/chat/completions",
             payload,
             headers={
@@ -297,9 +308,11 @@ def call_openai_compatible_chat(
             timeout=180,
         )
     except Exception as exc:
+        logger.warning("%s call failed after retries: %s", provider, exc)
         return {
             "mode": "prompt_only",
             "reply_text": f"{provider} 调用失败，已退回 prompt_only。错误：{exc!r}",
+            "error_detail": str(exc),
             "provider": provider,
             "model": model,
         }
@@ -315,9 +328,11 @@ def call_openai_compatible_chat(
         reply = ((data.get("choices") or [{}])[0].get("message") or {}).get("content") or ""
         raw_usage = dict(data.get("usage") or {})
     except Exception as exc:
+        logger.warning("%s response parse failed: %s", provider, exc)
         return {
             "mode": "prompt_only",
             "reply_text": f"{provider} 调用失败，已退回 prompt_only。错误：{exc!r}",
+            "error_detail": str(exc),
             "provider": provider,
             "model": model,
         }
@@ -395,7 +410,7 @@ def _maybe_record_usage(result: dict[str, Any], *, usage_context: dict[str, str]
             from .usage import get_current_context
             ctx = get_current_context()
         except Exception:
-            pass
+            logger.debug("Failed to load usage context", exc_info=True)
     if not ctx:
         return
     data_dir = ctx.get("data_dir", "")
@@ -417,9 +432,7 @@ def _maybe_record_usage(result: dict[str, Any], *, usage_context: dict[str, str]
             completion_tokens=int(usage.get("completion_tokens") or 0),
         )
     except Exception:
-        pass
-
-
+        logger.debug("Failed to record usage", exc_info=True)
 def _http_post_json(url: str, payload: dict[str, Any], headers: dict[str, str], timeout: int) -> str:
     """POST JSON payload and return response body as string."""
     req = Request(
@@ -430,3 +443,20 @@ def _http_post_json(url: str, payload: dict[str, Any], headers: dict[str, str], 
     )
     with urlopen(req, timeout=timeout) as response:
         return response.read().decode("utf-8")
+
+
+def _http_post_json_with_retry(
+    url: str, payload: dict[str, Any], headers: dict[str, str], *, timeout: int = 180, max_retries: int = 3,
+) -> str:
+    """POST with exponential backoff retry."""
+    last_error: Exception | None = None
+    for attempt in range(max_retries):
+        try:
+            return _http_post_json(url, payload, headers, timeout=timeout)
+        except Exception as exc:
+            last_error = exc
+            if attempt < max_retries - 1:
+                wait = 2 ** attempt
+                logger.warning("LLM HTTP attempt %d/%d failed: %s. Retrying in %ds...", attempt + 1, max_retries, exc, wait)
+                time.sleep(wait)
+    raise last_error  # type: ignore[misc]

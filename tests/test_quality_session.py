@@ -18,7 +18,7 @@ from writing_brain.pipelines.quality_session import (
 
 class QualitySessionTests(unittest.TestCase):
     @patch("writing_brain.pipelines.quality_session.run_post_review_pipeline")
-    @patch("writing_brain.pipelines.quality_session.build_review_report")
+    @patch("writing_brain.pipelines.contracts.build_review_report")
     def test_run_quality_session_persists_new_stage_artifacts(self, mock_review: object, mock_post_review: object) -> None:
         mock_review.return_value = {
             "contract_name": "review_report",
@@ -130,7 +130,7 @@ class QualitySessionTests(unittest.TestCase):
         research_pack = build_research_pack({}, context_pack=context_pack, assignment=assignment)
         self.assertEqual(research_pack["research_quality"], "draft_quality")
 
-    @patch("writing_brain.pipelines.quality_session.build_review_report")
+    @patch("writing_brain.pipelines.contracts.build_review_report")
     def test_fallback_article_fails_source_gate(self, mock_review: object) -> None:
         mock_review.return_value = {
             "contract_name": "review_report",
@@ -158,7 +158,7 @@ class QualitySessionTests(unittest.TestCase):
         self.assertIn("source", result["blocked_dimensions"])
         self.assertNotEqual(result["decision"], "pass")
 
-    @patch("writing_brain.pipelines.quality_session.build_review_report")
+    @patch("writing_brain.pipelines.contracts.build_review_report")
     def test_manual_input_passes_source_gate(self, mock_review: object) -> None:
         mock_review.return_value = {
             "contract_name": "review_report",
@@ -185,7 +185,7 @@ class QualitySessionTests(unittest.TestCase):
         )
         self.assertNotIn("source", result["blocked_dimensions"])
 
-    @patch("writing_brain.pipelines.quality_session.build_review_report")
+    @patch("writing_brain.pipelines.contracts.build_review_report")
     def test_evidence_gate_scales_with_must_cover(self, mock_review: object) -> None:
         mock_review.return_value = {
             "contract_name": "review_report",

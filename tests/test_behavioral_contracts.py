@@ -136,7 +136,7 @@ class TestAcceptDeliveryWritesBackSession(unittest.TestCase):
 class TestReviewRunIdPropagation(unittest.TestCase):
     """Contract 4: review_report must receive run_id from the pipeline."""
 
-    @patch("writing_brain.pipelines.quality_session.build_review_report")
+    @patch("writing_brain.pipelines.contracts.build_review_report")
     def test_review_receives_run_id(self, mock_review: object) -> None:
         mock_review.return_value = {
             "contract_name": "review_report",

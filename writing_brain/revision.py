@@ -18,10 +18,16 @@ def resolve_article_text(*, writer_turn: dict[str, Any] | None, manual_text: str
 def write_artifact(root: Path, run_id: str, suffix: str, body: str, extension: str) -> str:
     path = root / f"{run_id}.{suffix}.{extension}"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(body + ("\n" if body and not body.endswith("\n") else ""), encoding="utf-8")
+    content = body + ("\n" if body and not body.endswith("\n") else "")
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    tmp.rename(path)
     return path.name
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    content = json.dumps(payload, ensure_ascii=False, indent=2)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(content, encoding="utf-8")
+    tmp.rename(path)
