@@ -82,115 +82,115 @@ def _build_writer_prompt(
     claims = "\n".join(
         f"- {item.get('title')}: {item.get('summary')}"
         for item in context_pack.get("core_claims", [])[:4]
-    ) or "- 暂无可用 claim"
+    ) or "- None available"
     structures = "\n".join(
         f"- {item.get('name')}: {item.get('reason')}"
         for item in context_pack.get("preferred_structures", [])[:2]
-    ) or "- 暂无明确结构建议"
+    ) or "- No specific structure recommendation"
     format_rules = "\n".join(
         [
-            "- 按公众号母稿排版输出，不要写“标题：”“导语：”“正文：”“标题备选”这类标签。",
-            "- 第一行只写一个 Markdown H1 标题，格式类似 `# 文章标题`。",
-            "- 标题后直接进入正文，不要加 `---` 分割线，不要单独写导语标签。",
-            "- 默认整篇只用自然段推进，不要写 `**1.**`、`**2.**` 这种硬编号小标题，也尽量不要写 `##` 小标题。",
-            "- 只有在信息密度明显过高、自然分段无法承载时，才允许 1 到 2 个 `##` 小标题。",
-            "- 段落保持简短，尽量贴近作者现有母稿的排版节奏。",
+            '- Output in WeChat master-draft format. Do not write labels like "标题：", "导语：", "正文：", "标题备选".',
+            "- First line: a single Markdown H1 title, e.g. `# Article Title`.",
+            "- Enter the body directly after the title — no `---` divider, no separate introduction label.",
+            "- Use natural paragraphs throughout. Do not use hard-numbered subheadings like `**1.**`, `**2.**`, and minimize `##` subheadings.",
+            "- Allow 1-2 `##` subheadings only when information density is clearly too high for natural paragraphs alone.",
+            "- Keep paragraphs short, matching the rhythm of the author's existing master drafts.",
         ]
     )
     length_rules = "\n".join(
         [
-            "- 如果是公众号观点母稿，默认写到能把判断、论证和边界讲透，不要为了克制而过度收短。",
-            "- 在用户没有明确要求短文时，公众号观点母稿通常不少于 1400 字符。",
-            "- 必须覆盖点没有讲透前，不要提前收尾。",
+            "- For WeChat opinion master drafts, write until the judgment, argumentation, and boundaries are fully developed — do not cut short for the sake of brevity.",
+            "- When the user has not explicitly requested a short article, WeChat opinion master drafts should typically be no fewer than 1400 characters.",
+            "- Do not close early before must-cover points have been fully developed.",
         ]
     )
     knowledge = "\n".join(
         f"- [{item.get('entity_type')}] {item.get('statement')}"
         for item in context_pack.get("memory_knowledge", [])[:6]
-    ) or "- 暂无长期记忆知识体"
-    must_cover = "\n".join(f"- {item}" for item in context_pack.get("must_cover_points", [])[:6]) or "- 暂无"
-    style_rules = "\n".join(f"- {item}" for item in context_pack.get("style_rules", [])[:6]) or "- 暂无"
-    platform_rules = "\n".join(f"- {item}" for item in context_pack.get("platform_rules", [])[:6]) or "- 暂无"
-    project_constraints = "\n".join(f"- {item}" for item in context_pack.get("project_constraints", [])[:6]) or "- 暂无"
-    evidence_needs = "\n".join(f"- {item}" for item in context_pack.get("evidence_needs", [])[:6]) or "- 暂无"
+    ) or "- No long-term memory knowledge"
+    must_cover = "\n".join(f"- {item}" for item in context_pack.get("must_cover_points", [])[:6]) or "- None"
+    style_rules = "\n".join(f"- {item}" for item in context_pack.get("style_rules", [])[:6]) or "- None"
+    platform_rules = "\n".join(f"- {item}" for item in context_pack.get("platform_rules", [])[:6]) or "- None"
+    project_constraints = "\n".join(f"- {item}" for item in context_pack.get("project_constraints", [])[:6]) or "- None"
+    evidence_needs = "\n".join(f"- {item}" for item in context_pack.get("evidence_needs", [])[:6]) or "- None"
     mode_instruction = _task_mode_instruction(task_mode)
     review_issues = "\n".join(
         f"- {item.get('summary')}"
         for item in review_report.get("top_issues", [])[:5]
         if item.get("summary")
-    ) or "- 暂无 reviewer 问题"
-    rewrite_actions = "\n".join(f"- {item}" for item in review_report.get("rewrite_actions", [])[:6]) or "- 暂无 reviewer 改写要求"
+    ) or "- No reviewer issues"
+    rewrite_actions = "\n".join(f"- {item}" for item in review_report.get("rewrite_actions", [])[:6]) or "- No reviewer revision requirements"
 
-    return f"""你是作者的长期写作搭档。
+    return f"""You are the author's long-term writing partner. All article output must be in Chinese (Simplified).
 
-当前任务模式：{task_mode}
+Current task mode: {task_mode}
 {mode_instruction}
 
-主题：{context_pack.get("topic", "")}
-平台：{context_pack.get("platform", "")}
-受众：{context_pack.get("audience", "")}
-目标：{context_pack.get("user_goal", "")}
-文风：{context_pack.get("tone_target", "")}
+Topic: {context_pack.get("topic", "")}
+Platform: {context_pack.get("platform", "")}
+Audience: {context_pack.get("audience", "")}
+Goal: {context_pack.get("user_goal", "")}
+Tone: {context_pack.get("tone_target", "")}
 
-作者当前补充：
-{user_message or "无"}
+Author's current notes:
+{user_message or "None"}
 
-必须覆盖：
+Must cover:
 {must_cover}
 
-历史观点参考（仅在与当前主题直接相关时才可复用）：
+Historical claims (reuse only when directly relevant to the current topic):
 {claims}
 
-推荐结构：
+Recommended structures:
 {structures}
 
-排版规则：
+Formatting rules:
 {format_rules}
 
-长度规则：
+Length rules:
 {length_rules}
 
-长期记忆知识体（只在直接相关时使用）：
+Long-term memory knowledge (use only when directly relevant):
 {knowledge}
 
-风格规则：
+Style rules:
 {style_rules}
 
-平台规则：
+Platform rules:
 {platform_rules}
 
-项目硬约束：
+Project constraints:
 {project_constraints}
 
-待补论据：
+Evidence needs:
 {evidence_needs}
 
-当前草稿：
-{current_draft or "无"}
+Current draft:
+{current_draft or "None"}
 
-reviewer 问题：
+Reviewer issues:
 {review_issues}
 
-reviewer 修改要求：
+Reviewer revision requirements:
 {rewrite_actions}
 
-要求：
-1. 历史观点和长期记忆只能作为辅助参考；如果和当前主题不直接相关，就忽略，不要硬塞进正文。
-2. 不要写空泛正确废话。
-3. 需要区分判断、论据、结构建议。
-4. 如果是 brainstorm，就先帮作者收束思路。
-5. 如果是 draft，就直接给可用初稿。
-6. 如果是 revise，就按已有方向改稿，不要重起炉灶。
-7. 如果存在当前草稿和 reviewer 问题，优先按 reviewer 要求定向修正。
+Requirements:
+1. Historical claims and long-term memory are auxiliary references only; ignore them if not directly relevant to the current topic — do not force them into the article.
+2. Do not write vague platitudes.
+3. Distinguish between judgments, evidence, and structural suggestions.
+4. If brainstorming, help the author converge their thinking first.
+5. If drafting, produce a usable first draft directly.
+6. If revising, revise along the existing direction — do not start from scratch.
+7. If a current draft and reviewer issues exist, prioritize targeted fixes based on reviewer requirements.
 """
 
 
 def _task_mode_instruction(task_mode: str) -> str:
     if task_mode == "draft":
-        return "请直接给出可用初稿，优先成稿，不要长篇解释。"
+        return "Produce a usable first draft directly. Prioritize completing the article, not lengthy explanations."
     if task_mode == "revise":
-        return "请基于已有方向修稿，重点处理问题，不要整体推翻。"
-    return "请先和作者一起收束思路，必要时给 brief、结构和开头方向。"
+        return "Revise based on the existing direction. Focus on fixing issues, do not start over."
+    return "Help the author converge their thinking first. Provide brief, structure, and opening direction as needed."
 
 
 def _call_writer_model(
@@ -263,7 +263,7 @@ def _call_packy_api(prompt: str, api_key: str) -> dict[str, str]:
     max_tokens = _resolve_draft_max_tokens()
     result = call_packy_chat(
         prompt=prompt,
-        system_prompt="你是中文写作搭档。回答自然、克制、少模板腔，优先帮助作者把判断讲清楚。",
+        system_prompt="You are a Chinese-language writing partner. Respond naturally with restraint, minimize template-speak, prioritize helping the author articulate judgments clearly. Always output article text in Chinese.",
         default_model=DEFAULT_DRAFT_MODEL,
         model_env_vars=["PACKYAPI_MODEL", "WRITING_BRAIN_WRITER_MODEL"],
         temperature=0.3,
@@ -283,7 +283,7 @@ def _call_gemini_revise_model(prompt: str) -> dict[str, str]:
         max_tokens = _resolve_gemini_revise_max_tokens()
         result = call_packy_chat(
             prompt=prompt,
-            system_prompt="你是中文改稿搭档。你要严格按照 reviewer 问题定向修稿，不要重起炉灶，不要偷懒。",
+            system_prompt="You are a Chinese-language revision partner. Strictly follow reviewer issues for targeted revisions. Do not start from scratch. Do not cut corners. Always output the revised article in Chinese.",
             default_model=DEFAULT_GEMINI_REVISE_MODEL,
             model_env_vars=["PACKYAPI_REVISE_MODEL", "WRITING_BRAIN_GEMINI_REVISE_MODEL", "PACKYAPI_MODEL", "WRITING_BRAIN_WRITER_MODEL"],
             temperature=0.2,
@@ -335,7 +335,7 @@ def _call_gemini_revise_model(prompt: str) -> dict[str, str]:
 def _call_claude_revise_model(prompt: str) -> dict[str, str]:
     result = call_ppchat_chat(
         prompt=prompt,
-        system_prompt="你是中文改稿搭档。你要严格按照 reviewer 问题定向修稿，不要重起炉灶，不要偷懒。",
+        system_prompt="You are a Chinese-language revision partner. Strictly follow reviewer issues for targeted revisions. Do not start from scratch. Do not cut corners. Always output the revised article in Chinese.",
         default_model=DEFAULT_CLAUDE_REVISE_MODEL,
         model_env_vars=["PPCHAT_REVISE_MODEL", "WRITING_BRAIN_CLAUDE_REVISE_MODEL", "WRITING_BRAIN_REVISE_MODEL", "OPENAI_MODEL", "ANTHROPIC_MODEL"],
         temperature=0.2,
@@ -352,7 +352,7 @@ def _call_claude_revise_model(prompt: str) -> dict[str, str]:
 def _call_gpt_revise_model(prompt: str) -> dict[str, str]:
     result = call_ppchat_chat(
         prompt=prompt,
-        system_prompt="你是中文改稿搭档。你要严格按照 reviewer 问题定向修稿，不要重起炉灶，不要偷懒。",
+        system_prompt="You are a Chinese-language revision partner. Strictly follow reviewer issues for targeted revisions. Do not start from scratch. Do not cut corners. Always output the revised article in Chinese.",
         default_model=DEFAULT_GPT_REVISE_MODEL,
         model_env_vars=[
             "PPCHAT_GPT_REVISE_MODEL",
@@ -558,7 +558,7 @@ def _looks_like_complete_article(text: str, *, baseline_length: int) -> bool:
         return False
     if baseline_length >= 600 and len(text) < int(baseline_length * 0.55):
         return False
-    if text[-1] not in "。！？!?”」』":
+    if text[-1] not in "。！？!?\u201d」』":
         return False
     return True
 

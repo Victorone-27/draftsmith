@@ -1,35 +1,35 @@
-检查文章的关键判断是否有足够证据支撑。
+Check whether the article's key judgments have sufficient evidence support.
 
-## 检查维度
+## Check dimensions
 
-1. 证据信号 — 文中是否出现具体的案例、数据、场景、对比、引用等支撑材料
-2. 空口断言 — 哪些判断只有结论没有支撑（"X 很重要"但没说为什么）
-3. 证据与判断的匹配 — 举的证据是否真的支撑上文判断，还是换了个话题
-4. 证据密度 — 全文证据信号数量是否足够支撑文章的判断密度
+1. Evidence signals — does the text contain specific cases, data, scenarios, comparisons, citations, or other supporting material
+2. Unsupported assertions — which judgments have only conclusions without support ("X is important" but no explanation why)
+3. Evidence-judgment alignment — does the cited evidence actually support the preceding judgment, or does it change the topic
+4. Evidence density — is the total number of evidence signals sufficient to support the article's judgment density
 
-## 信号词参考
+## Signal word reference
 
-证据类：比如、例如、案例、场景、数据、一个很直接的例子、根据、调查显示
-反例类：但如果、反过来、例外是、不适用于
-引用类：某某说、某某认为、报告显示
+Evidence: "比如", "例如", "案例", "场景", "数据", "一个很直接的例子", "根据", "调查显示"
+Counterexample: "但如果", "反过来", "例外是", "不适用于"
+Citation: "某某说", "某某认为", "报告显示"
 
-## 通过标准
+## Pass criteria
 
-- evidence_hits ≥ max(1, min(2, evidence_items 数量))
-- 即：至少 1 个证据信号，如果 research_pack 里有 2 个以上 evidence_items 则至少 2 个
+- evidence_hits ≥ max(1, min(2, number of evidence_items))
+- That is: at least 1 evidence signal; if research_pack has 2+ evidence_items, then at least 2
 
-## 输出
+## Output
 
 ```
 ok: true | false
-evidence_hits: 数字
-required_minimum: 数字
-unsupported_claims: ["第 N 段的判断缺乏证据"]
+evidence_hits: number
+required_minimum: number
+unsupported_claims: ["judgment in paragraph N lacks evidence"]
 ```
 
-## 常见失败模式
+## Common failure modes
 
-- 全文都是判断和观点，没有一个具体例子或数据
-- 有例子但和判断之间缺少连接（读者需要自己猜为什么举这个例子）
-- 证据集中在某一段，其他段落全是空口断言
-- 用"众所周知""大家都知道"代替实际证据
+- Entire article is judgments and opinions without a single concrete example or data point
+- Examples exist but lack connection to the judgment (reader must guess why the example was given)
+- Evidence is concentrated in one paragraph while other paragraphs are all unsupported assertions
+- Using "as everyone knows" or "it's well known" as a substitute for actual evidence

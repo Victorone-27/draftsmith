@@ -51,7 +51,7 @@ class WriterTests(unittest.TestCase):
             self.assertEqual(result["contract_name"], "writer_response")
             self.assertEqual(result["mode"], "prompt_only")
             self.assertEqual(result["provider"], "prompt_only")
-            self.assertIn("长期记忆知识体", result["writer_prompt"])
+            self.assertIn("Long-term memory knowledge", result["writer_prompt"])
             self.assertIn("开头直接给出判断时，作者认可度更高。", result["writer_prompt"])
             self.assertTrue((root / "sessions" / "writer_demo.writer.json").exists())
             self.assertTrue(any("默认不调用 Gemini" in item for item in result["recommended_next_actions"]))
@@ -79,7 +79,7 @@ class WriterTests(unittest.TestCase):
             )
 
             self.assertEqual(result["task_mode"], "revise")
-            self.assertIn("当前草稿", result["writer_prompt"])
+            self.assertIn("Current draft", result["writer_prompt"])
             self.assertIn("先说一个大背景。", result["writer_prompt"])
             self.assertIn("把核心判断提前到第一段", result["writer_prompt"])
 

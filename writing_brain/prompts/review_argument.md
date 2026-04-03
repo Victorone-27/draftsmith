@@ -1,38 +1,38 @@
-检查文章是否形成连续论证，而不是观点堆叠。
+Check whether the article forms continuous argumentation rather than opinion stacking.
 
-## 检查维度
+## Check dimensions
 
-1. 判断是否明确 — 文章是否在前两段给出了一个可争论的核心判断
-2. 因果链是否完整 — 判断之间是否有"因为/所以/这意味着"的推导关系
-3. 对比是否有效 — "不是 X 而是 Y"的对比是否真正区分了两个不同的东西
-4. 例子是否支撑 — 举的例子是否直接支撑上文的判断，而不是换了个话题
-5. claim-support gap — 哪些段落只给了结论没给支撑（判断后面没有因果、对比或例子）
+1. Judgment clarity — does the article present a debatable core judgment within the first two paragraphs
+2. Causal chain completeness — do judgments have derivation relationships (because/therefore/this means)
+3. Contrast effectiveness — do "not X but Y" contrasts genuinely distinguish two different things
+4. Example support — do examples directly support the preceding judgment rather than changing the topic
+5. Claim-support gap — which paragraphs give only conclusions without support (no causal chain, contrast, or example after the judgment)
 
-## 信号词参考
+## Signal word reference
 
-因果类：因为、所以、因此、导致、结果是、这意味着
-对比类：不是、而是、相比、反过来、问题在于
-支撑类：比如、例如、案例、场景、数据、一个很直接的例子
-限定类：前提是、代价是、风险是、条件是
+Causal: "因为", "所以", "因此", "导致", "结果是", "这意味着"
+Contrast: "不是", "而是", "相比", "反过来", "问题在于"
+Support: "比如", "例如", "案例", "场景", "数据", "一个很直接的例子"
+Qualifier: "前提是", "代价是", "风险是", "条件是"
 
-## 通过标准
+## Pass criteria
 
-- 论证信号总数 ≥ 5
-- 至少覆盖因果、对比、支撑中的 2 类
-- claim-support gap ≤ 1（最多 1 个判断段落缺乏支撑）
+- Total argument signals ≥ 5
+- Cover at least 2 of the 3 categories: causal, contrast, support
+- claim-support gap ≤ 1 (at most 1 judgment paragraph lacking support)
 
-## 输出
+## Output
 
 ```
 ok: true | false
-signal_total: 数字
+signal_total: number
 category_hits: {causal: N, contrast: N, support: N, qualifier: N}
-claim_support_gaps: 数字
-gap_locations: ["第 N 段只给结论没给支撑"]
+claim_support_gaps: number
+gap_locations: ["paragraph N gives only conclusion without support"]
 ```
 
-## 常见失败模式
+## Common failure modes
 
-- 全文都是"X 很重要""Y 是关键"，但没有一个段落解释为什么
-- 有对比但两边说的是同一件事（伪对比）
-- 例子和判断之间缺少连接句，读者需要自己猜关系
+- Entire article is "X is important", "Y is key" without a single paragraph explaining why
+- Contrasts exist but both sides describe the same thing (pseudo-contrast)
+- Examples and judgments lack connecting sentences — the reader must guess the relationship

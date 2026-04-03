@@ -40,7 +40,7 @@ def ingest_memory_record(payload: dict[str, Any], config: AppConfig) -> dict[str
         "contract_version": "v1",
         "run_id": run_id,
         "topic": topic,
-        "session_summary": session_summary or f"本次围绕“{topic}”完成了一轮写作与审稿。",
+        "session_summary": session_summary or f"Completed a round of writing and review around '{topic}'.",
         "article_summary": article_summary,
         "human_feedback": human_feedback,
         "review_takeaways": review_takeaways,
@@ -88,7 +88,7 @@ def build_daily_digest(payload: dict[str, Any], config: AppConfig) -> dict[str, 
             if entity.get("statement")
         ][:8],
         "author_focus": [
-            f"最近持续在写：{record.get('topic')}"
+            f"Recently writing about: {record.get('topic')}"
             for record in recent_records[:3]
             if record.get("topic")
         ],
@@ -143,7 +143,7 @@ def _derive_knowledge_entities(
                 _knowledge_entity(
                     run_id=run_id,
                     entity_type="preference_rule",
-                    statement="观点型文章应尽快在开头给出核心判断，而不是先铺背景。",
+                    statement="Opinion articles should present the core judgment in the opening as quickly as possible, rather than setting up background first.",
                     applies_to={**base_scope, "article_stage": "opening"},
                     source="review_feedback",
                     confidence=0.72,
@@ -154,7 +154,7 @@ def _derive_knowledge_entities(
                 _knowledge_entity(
                     run_id=run_id,
                     entity_type="preference_rule",
-                    statement="核心判断后需要尽快补充具体场景、案例或论据支撑。",
+                    statement="After the core judgment, concrete scenarios, cases, or evidence support should follow as quickly as possible.",
                     applies_to={**base_scope, "article_stage": "body"},
                     source="review_feedback",
                     confidence=0.74,
@@ -165,7 +165,7 @@ def _derive_knowledge_entities(
                 _knowledge_entity(
                     run_id=run_id,
                     entity_type="anti_pattern",
-                    statement="模板化提示语过多会明显拉低文章的信息密度和真实感。",
+                    statement="Excessive template-like filler phrases significantly reduce the article's information density and authenticity.",
                     applies_to={**base_scope, "article_stage": "global"},
                     source="review_feedback",
                     confidence=0.7,
@@ -267,11 +267,11 @@ def _feedback_takeaways(human_feedback: dict[str, Any]) -> list[str]:
     for item in human_feedback.get("approved_points") or []:
         text = str(item).strip()
         if text:
-            takeaways.append(f"作者认可：{text}")
+            takeaways.append(f"Author approved: {text}")
     for item in human_feedback.get("criticized_points") or []:
         text = str(item).strip()
         if text:
-            takeaways.append(f"作者批评：{text}")
+            takeaways.append(f"Author criticized: {text}")
     return takeaways
 
 
@@ -332,23 +332,23 @@ def _infer_stage(text: str) -> str:
 
 def _normalize_approved_feedback(text: str) -> str:
     if "开头" in text or "首段" in text:
-        return "开头直接给出判断时，作者认可度更高。"
-    return f"以下写法获得作者正向认可：{text}"
+        return "Author approval is higher when the opening directly states the judgment."
+    return f"The following writing approach received positive author approval: {text}"
 
 
 def _normalize_criticized_feedback(text: str) -> str:
     if "结尾" in text and ("空" in text or "虚" in text):
-        return "结尾如果只有抽象升华而没有具体落点，作者通常不认可。"
-    return f"以下表达模式容易引发作者负反馈：{text}"
+        return "Endings with only abstract elevation and no concrete landing point are typically rejected by the author."
+    return f"The following expression pattern tends to trigger negative author feedback: {text}"
 
 
 def _normalize_keep_doing(text: str) -> str:
     if "首段" in text or "开头" in text or "判断" in text:
-        return "首段应尽快给出核心判断。"
-    return f"作者偏好以下稳定写法：{text}"
+        return "The opening paragraph should present the core judgment as quickly as possible."
+    return f"The author prefers the following stable writing approach: {text}"
 
 
 def _normalize_avoid_next_time(text: str) -> str:
     if "结尾" in text and ("总结句" in text or "空泛" in text or "升华" in text):
-        return "避免使用只有态度没有落点的空泛结尾。"
-    return f"应避免以下写法：{text}"
+        return "Avoid vague endings that have attitude but no concrete landing point."
+    return f"The following writing approach should be avoided: {text}"

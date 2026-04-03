@@ -104,7 +104,7 @@ class MemoryTests(unittest.TestCase):
             )
             loaded_success = next(item for item in context_pack["memory_knowledge"] if item["entity_type"] == "success_pattern")
             self.assertEqual(loaded_success["support_count"], 2)
-            self.assertIn("开头直接给出判断时，作者认可度更高。", [item["statement"] for item in context_pack["memory_knowledge"]])
+            self.assertIn("Author approval is higher when the opening directly states the judgment.", [item["statement"] for item in context_pack["memory_knowledge"]])
 
 
 if __name__ == "__main__":

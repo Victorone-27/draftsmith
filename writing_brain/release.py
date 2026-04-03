@@ -159,7 +159,7 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
                     "context_pack": platform_context,
                     "current_draft": platform_article,
                     "review_report": review_report,
-                    "user_message": "请根据 reviewer 意见定向修稿，同时保留该平台语气和结构习惯。",
+                    "user_message": "Revise based on reviewer feedback while preserving the platform's tone and structural conventions. Output the article in Chinese.",
                 },
                 config,
             )
@@ -312,42 +312,62 @@ def _platform_adaptation_message(platform: str, *, source_platform: str, target_
     platform_name = platform_display_name(platform)
     if platform == "wechat":
         return (
-            f"请基于当前母稿输出可直接发布的公众号版，首屏更快亮判断，保留观点推进和论证密度。"
-            f"不要压缩成摘要，观点必须讲完整；通常需要接近 {target_chars} 字的展开密度，但以讲清楚为准。"
+            f"Based on the current master draft, produce a publishable WeChat Official Account version. "
+            f"Present the core judgment faster in the first screen. Preserve argument density and depth. "
+            f"Do not compress into a summary — all arguments must be fully developed. "
+            f"Target approximately {target_chars} characters of developed content, but prioritize clarity over length. "
+            f"Output the article in Chinese."
         )
     if platform == "zhihu":
         return (
-            f"请把当前母稿改成知乎版，问题意识更明确，论证更展开，少一点情绪化句子，多一点解释和边界。"
-            f"不要缩写成短帖，观点链路要完整；通常需要接近 {target_chars} 字的展开密度，但不要机械凑字。"
+            f"Adapt the current master draft into a Zhihu version. "
+            f"Sharpen the problem definition, expand the argumentation, reduce emotional sentences, "
+            f"add more explanation and boundary conditions. "
+            f"Target approximately {target_chars} characters. "
+            f"Output the article in Chinese."
         )
     if platform == "xiaohongshu":
         return (
-            f"请把当前母稿改成小红书长文版，开头更抓人，段落更短，标题和小标题更像笔记，但不要写成空泛鸡汤。"
-            f"保持长文密度，把观点讲完整；通常需要接近 {target_chars} 字的展开密度。"
+            f"Adapt the current master draft into a Xiaohongshu long-form version. "
+            f"Make the opening more attention-grabbing, keep paragraphs shorter, "
+            f"make titles and subheadings more note-like, but do not write vague inspirational content. "
+            f"Target approximately {target_chars} characters. "
+            f"Output the article in Chinese."
         )
     if platform == "renrendoushichanpinjingli":
         return (
-            f"请把当前母稿改成人都是产品经理版，强调产品、组织、工作流和方法启发，减少纯情绪判断。"
-            f"要把方法和判断说透，通常需要接近 {target_chars} 字的展开密度。"
+            f"Adapt the current master draft into a version for renrendoushichanpinjingli. "
+            f"Emphasize product, organization, workflow, and method insights. Reduce pure emotional judgments. "
+            f"Target approximately {target_chars} characters. "
+            f"Output the article in Chinese."
         )
     if platform == "toutiao":
         return (
-            f"请把当前母稿改成今日头条版，开头直接、判断明确、节奏更快，保留信息密度。"
-            f"不要只给短观点，至少要把这条判断为什么成立讲清楚；参考展开密度接近 {target_chars} 字。"
+            f"Adapt the current master draft into a Toutiao version. "
+            f"Open directly, state judgments clearly, maintain a faster pace while preserving information density. "
+            f"Target approximately {target_chars} characters. "
+            f"Output the article in Chinese."
         )
     if platform == "csdn":
         return (
-            f"请把当前母稿改成 CSDN 版，结构更工程化，增加方法、框架、判断拆解，适合技术和产品读者。"
-            f"需要有完整拆解，不要只保留结论；参考展开密度接近 {target_chars} 字。"
+            f"Adapt the current master draft into a CSDN version. "
+            f"Make the structure more engineering-oriented, add method, framework, and judgment breakdowns "
+            f"suitable for technical and product readers. "
+            f"Target approximately {target_chars} characters. "
+            f"Output the article in Chinese."
         )
     if platform == "juejin":
         return (
-            f"请把当前母稿改成掘金版，保留观点，但更像面向互联网从业者的深度经验帖。"
-            f"要把经验判断讲透，参考展开密度接近 {target_chars} 字。"
+            f"Adapt the current master draft into a Juejin version. "
+            f"Preserve the opinions but write more like an in-depth experience post for internet practitioners. "
+            f"Target approximately {target_chars} characters. "
+            f"Output the article in Chinese."
         )
     return (
-        f"请把当前{platform_display_name(source_platform)}母稿改成适合{platform_name}发布的版本。"
-        f"不要压缩成摘要，观点必须讲完整；参考展开密度接近 {target_chars} 字。"
+        f"Adapt the current {platform_display_name(source_platform)} master draft into a version suitable for {platform_name} publication. "
+        f"Preserve core judgments and argument chain. Do not compress into a summary. "
+        f"Target approximately {target_chars} characters. "
+        f"Output the article in Chinese."
     )
 
 
@@ -433,14 +453,17 @@ def _platform_min_evidence_signals(platform: str) -> int:
 
 def _platform_expansion_message(*, platform: str, assessment: dict[str, Any], round_index: int) -> str:
     platform_name = PLATFORM_NAMES.get(platform, platform)
-    round_hint = "这已经是二次扩写，请明显补足内容深度和篇幅。" if round_index > 0 else "请直接扩写成完整长文。"
-    reason_text = "；".join(assessment["reasons"]) if assessment["reasons"] else "当前版本仍偏摘要化"
+    round_hint = "This is the second expansion round — significantly increase content depth and length." if round_index > 0 else "Expand directly into a complete long-form article."
+    reason_text = "; ".join(assessment["reasons"]) if assessment["reasons"] else "the current version still reads like a summary"
     return (
-        f"当前这版{platform_name}还没有把观点讲完整，主要问题是：{reason_text}。"
-        f"{round_hint}"
-        "请保留原文核心判断和主线结构，补足为什么会这样、具体场景、案例或类比、潜在反例、后果与行动启发。"
-        f"参考展开密度约 {assessment['soft_floor']} 到 {assessment['target_chars']} 字，但不要机械凑字，关键是读完后判断完整。"
-        "不要写成提纲、修改说明或摘要，不要空话和重复句，直接输出可发布正文全文。"
+        f"The current {platform_name} version has not fully developed the arguments. The main issue is: {reason_text}. "
+        f"{round_hint} "
+        "Preserve the original core judgments and main structure. Add why this is the case, specific scenarios, "
+        "cases or analogies, potential counterexamples, consequences, and actionable insights. "
+        f"Target approximately {assessment['soft_floor']} to {assessment['target_chars']} characters of developed content, "
+        "but do not pad mechanically — the key is that the judgment feels complete after reading. "
+        "Do not write as an outline, revision notes, or summary. No empty talk or repeated sentences. "
+        "Output the complete publishable article directly in Chinese."
     )
 
 

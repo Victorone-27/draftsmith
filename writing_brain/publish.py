@@ -230,7 +230,7 @@ def _build_image_slots_from_brief(
         prompt = _slot_prompt(
             topic=topic,
             snippet=anchor,
-            style_hint="真实编辑感，避免海报感",
+            style_hint="Authentic editorial feel, avoid poster aesthetic",
             source_type=primary_source_type,
         )
         aspect_ratio = "16:9" if index == 0 else ("4:3" if role != "product_screenshot" else "16:9")
@@ -437,8 +437,9 @@ def _build_image_slots(
             filename="封面",
             caption=f"封面图：{compact_whitespace(title)}",
             prompt=(
-                f"{topic}，中国语境，真实纪实摄影，新闻图片或杂志专题封面质感，适合作为{_platform_name(platform)}文章封面，"
-                f"{style_hint}，自然光，真实人物或真实场景，不要 AI 海报感，不要赛博朋克，不要机器人，不出现品牌 logo"
+                f"{topic}, Chinese context, authentic documentary photography, news photo or magazine feature cover quality, "
+                f"suitable as a {_platform_name(platform)} article cover, {style_hint}, natural lighting, real people or real scenes, "
+                f"no AI poster aesthetic, no cyberpunk, no robots, no brand logos"
             ),
             aspect_ratio="16:9",
             image_size="2K",
@@ -786,12 +787,12 @@ def _platform_file_stem(platform: str) -> str:
 
 def _style_hint(image_plan_body: str) -> str:
     if not image_plan_body.strip():
-        return "媒体感，层次清楚"
+        return "editorial media feel, clear layering"
     for line in image_plan_body.splitlines():
         stripped = line.strip().lstrip("- ").strip()
         if stripped.startswith("风格："):
             return stripped.removeprefix("风格：").strip()
-    return "媒体感，层次清楚"
+    return "editorial media feel, clear layering"
 
 
 def _caption_from_paragraph(paragraph: str) -> str:
@@ -822,8 +823,9 @@ def _slot_prompt(*, topic: str, snippet: str, style_hint: str, source_type: str)
     if source_type == "public":
         return _public_search_query(topic=topic, snippet=snippet)
     return (
-        f"{topic}，围绕这段文字生成配图：{snippet[:120]}。"
-        f"中国语境，真实纪实摄影，杂志专题图片质感，适合文章正文插图，{style_hint}，自然光，不要海报感，不要夸张 UI。"
+        f"{topic}, generate an illustration based on this text: {snippet[:120]}. "
+        f"Chinese context, authentic documentary photography, magazine feature quality, "
+        f"suitable as article body illustration, {style_hint}, natural lighting, no poster aesthetic, no exaggerated UI."
     )
 
 
@@ -831,16 +833,16 @@ def _public_search_query(*, topic: str, snippet: str) -> str:
     combined = f"{topic} {snippet}"
     normalized = combined.lower()
 
-    if any(token in normalized for token in ["老板", "企业", "预算", "管理", "协同", "流程", "组织"]):
+    if any(token in normalized for token in ["老板", "企业", "预算", "管理", "协同", "流程", "组织", "boss", "enterprise", "budget", "management"]):
         return "business meeting executives office teamwork"
-    if any(token in normalized for token in ["agent", "ai", "人工智能", "模型", "prompt", "智能体"]):
-        return "AI 人工智能 会议 现场 商务"
-    if any(token in normalized for token in ["团队", "协作", "办公室", "会议"]):
+    if any(token in normalized for token in ["agent", "ai", "人工智能", "模型", "prompt", "智能体", "artificial intelligence"]):
+        return "AI artificial intelligence conference business"
+    if any(token in normalized for token in ["团队", "协作", "办公室", "会议", "team", "collaboration", "office"]):
         return "technology team office meeting"
 
     short_topic = _compact_public_query_fragment(topic, limit=12)
     if short_topic:
-        return f"{short_topic} 商务 团队 会议 真实照片"[:72]
+        return f"{short_topic} business team meeting real photo"[:72]
     return "business office teamwork meeting"
 
 

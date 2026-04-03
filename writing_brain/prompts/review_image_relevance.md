@@ -1,31 +1,31 @@
-检查图片是否服务正文论点，而不是装饰。
+Check whether images serve the article's arguments rather than being decorative.
 
-## 检查维度
+## Check dimensions
 
-1. 图位职责 — 每张图是否有明确的信息职责（支撑某个判断、展示某个案例、解释某个关系）
-2. 锚点对应 — 图片的 anchor 是否指向正文中一个具体段落，而不是泛泛的主题
-3. 信息增量 — 删掉这张图后，读者是否会少理解一层意思（如果不会，说明图是装饰）
-4. 角色匹配 — 图片的实际内容是否匹配声明的 role（比如 data_chart 是否真的是数据图）
+1. Slot responsibility — does each image have a clear informational responsibility (supporting a judgment, showing a case, explaining a relationship)
+2. Anchor correspondence — does the image's anchor point to a specific paragraph in the article, not a vague topic
+3. Information increment — would the reader understand one less layer of meaning if this image were removed (if not, the image is decorative)
+4. Role match — does the image's actual content match its declared role (e.g., is a data_chart actually a data chart)
 
-## 常见问题
+## Common issues
 
-- 封面图和正文主题无关（用了通用科技图）
-- 配图只是"看起来相关"但不支撑任何具体段落
-- 多张图说的是同一件事（信息重复）
-- scene_photo 角色但用了 AI 生成图（应该用真实照片）
-- 图片的 anchor 指向的段落已经被删除或大幅修改
+- Cover image is unrelated to the article topic (uses a generic tech image)
+- Supporting images only "look related" but do not support any specific paragraph
+- Multiple images convey the same thing (information redundancy)
+- scene_photo role but uses an AI-generated image (should use a real photograph)
+- Image anchor points to a paragraph that has been deleted or significantly revised
 
-## 通过标准
+## Pass criteria
 
-- 每张图的 anchor 在正文中可以找到对应段落
-- 封面图与 main_claim 直接相关
-- 不存在两张图服务同一个论点（除非文章确实需要）
+- Each image's anchor can be found as a corresponding paragraph in the article
+- Cover image is directly related to main_claim
+- No two images serve the same argument (unless the article genuinely requires it)
 
-## 输出
+## Output
 
 ```
 ok: true | false
-issues: ["具体问题描述"]
-needs_replacement: ["需要替换的图位 filename"]
-replacement_hint: ["替换建议"]
+issues: ["specific issue description"]
+needs_replacement: ["filename of slot needing replacement"]
+replacement_hint: ["replacement suggestion"]
 ```

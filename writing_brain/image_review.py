@@ -676,31 +676,31 @@ def _build_image_reviewer_prompt(
     context_pack: dict[str, Any],
 ) -> str:
     title = str(payload.get("title") or context_pack.get("topic") or "").strip()
-    tone_target = str(context_pack.get("tone_target") or payload.get("tone_target") or "锋利但克制，纪实，不要海报感").strip()
+    tone_target = str(context_pack.get("tone_target") or payload.get("tone_target") or "Sharp but restrained, documentary, no poster aesthetic").strip()
     article_excerpt = _article_excerpt(article_markdown)
-    slot_lines = "\n".join(_format_slot_for_review(item) for item in slots[:6]) or "- 当前没有可评审图片槽位"
+    slot_lines = "\n".join(_format_slot_for_review(item) for item in slots[:6]) or "- No image slots available for review"
     top_issues = "\n".join(
         f"- {item.get('summary')}：{item.get('evidence')}"
         for item in list(base_report.get("top_issues") or [])[:4]
-    ) or "- 当前文件级审核未发现显著问题"
+    ) or "- No significant issues found in file-level review"
     return (
-        "请只评估图片方案，不要审文章本身。\n"
-        f"文章标题：{title or '未提供'}\n"
-        f"平台：{base_report.get('platform') or ''}\n"
-        f"基调要求：{tone_target}\n"
-        f"图片包目录：{output_dir}\n\n"
-        "文章节选：\n"
+        "Evaluate the image package only — do NOT review the article text itself.\n"
+        f"Article title: {title or 'not provided'}\n"
+        f"Platform: {base_report.get('platform') or ''}\n"
+        f"Tone requirement: {tone_target}\n"
+        f"Image package directory: {output_dir}\n\n"
+        "Article excerpt:\n"
         f"{article_excerpt}\n\n"
-        "当前图片槽位与素材信息：\n"
+        "Current image slots and asset info:\n"
         f"{slot_lines}\n\n"
-        "文件级审核观察：\n"
+        "File-level review observations:\n"
         f"{top_issues}\n\n"
-        "请重点判断：\n"
-        "1. 图片是否贴合文章的核心判断，而不是泛泛配图。\n"
-        "2. 生成图 prompt 是否过于海报化、概念化或 AI 味太重。\n"
-        "3. 公开来源图是否跑题、过旧、人物/场景不对。\n"
-        "4. 整体气质是否足够克制、真实、能支撑锋利文章，而不是削弱它。\n\n"
-        "请只输出 JSON，字段为：score, decision, confidence, issue, action, strength。"
+        "Focus your judgment on:\n"
+        "1. Whether images align with the article's core arguments, not just generic decoration.\n"
+        "2. Whether generated-image prompts are too poster-like, conceptual, or obviously AI-generated.\n"
+        "3. Whether public-source images are off-topic, outdated, or show wrong people/scenes.\n"
+        "4. Whether the overall aesthetic is sufficiently restrained, authentic, and supports a sharp article rather than weakening it.\n\n"
+        "Output only JSON with fields: score, decision, confidence, issue, action, strength."
     )
 
 
@@ -714,20 +714,20 @@ def _build_image_procedural_prompt(
 ) -> str:
     summary = dict(supply_bundle.get("summary") or {})
     return (
-        "你是图片治理的程序性 reviewer，只判断评审流程是否可靠，并给出程序性结论。\n"
-        f"平台：{base_report.get('platform') or ''}\n"
-        f"图片槽位总数：{summary.get('expected_image_slots') or 0}\n"
-        f"现有图片数：{summary.get('images_present') or 0}\n"
-        f"Claude 票：score={claude_vote.get('score')}, decision={claude_vote.get('decision')}, valid={claude_vote.get('valid_vote')}, issue={claude_vote.get('issue')}\n"
-        f"Gemini 票：score={gemini_vote.get('score')}, decision={gemini_vote.get('decision')}, valid={gemini_vote.get('valid_vote')}, issue={gemini_vote.get('issue')}\n"
-        "请输出极短 JSON，字段：score, decision, abnormal_review, flags, reason, recommendation。"
+        "You are the procedural reviewer for image governance. Judge only whether the review process is reliable and provide a procedural conclusion.\n"
+        f"Platform: {base_report.get('platform') or ''}\n"
+        f"Total image slots: {summary.get('expected_image_slots') or 0}\n"
+        f"Images present: {summary.get('images_present') or 0}\n"
+        f"Claude vote: score={claude_vote.get('score')}, decision={claude_vote.get('decision')}, valid={claude_vote.get('valid_vote')}, issue={claude_vote.get('issue')}\n"
+        f"Gemini vote: score={gemini_vote.get('score')}, decision={gemini_vote.get('decision')}, valid={gemini_vote.get('valid_vote')}, issue={gemini_vote.get('issue')}\n"
+        "Output minimal JSON with fields: score, decision, abnormal_review, flags, reason, recommendation."
     )
 
 
 def _run_claude_image_reviewer(prompt: str) -> dict[str, Any]:
     result = call_ppchat_chat(
         prompt=prompt,
-        system_prompt="你是独立图片 reviewer。你只根据文章基调和图片元数据判断是否适合发布，只输出 JSON。",
+        system_prompt="You are an independent image reviewer. Judge publishability based on article tone and image metadata only. Output only JSON.",
         default_model="claude-opus-4-6",
         model_env_vars=["PPCHAT_REVIEWER_MODEL", "WRITING_BRAIN_REVIEWER_MODEL", "OPENAI_MODEL", "ANTHROPIC_MODEL"],
         temperature=0.1,
@@ -741,7 +741,7 @@ def _run_gemini_image_reviewer(payload: dict[str, Any], *, prompt: str) -> dict[
     if route == "native":
         result = call_gemini_native_chat(
             prompt=prompt,
-            system_prompt="你是独立图片 reviewer。你只根据文章基调和图片元数据判断是否适合发布，只输出合法 JSON。",
+            system_prompt="You are an independent image reviewer. Judge publishability based on article tone and image metadata only. Output only valid JSON.",
             default_model="gemini-3.1-pro-preview",
             model_env_vars=[
                 "WRITING_BRAIN_GEMINI_REVIEWER_MODEL",
@@ -791,7 +791,7 @@ def _run_image_procedural_reviewer(
 ) -> dict[str, Any]:
     result = call_ppchat_chat(
         prompt=prompt,
-        system_prompt="你是图片治理的程序性 reviewer。你只判断评审流程是否异常，只输出 JSON。",
+        system_prompt="You are the procedural reviewer for image governance. Judge only whether the review process is abnormal. Output only JSON.",
         default_model="gpt-5.4",
         model_env_vars=[
             "PPCHAT_GPT_REVIEWER_MODEL",

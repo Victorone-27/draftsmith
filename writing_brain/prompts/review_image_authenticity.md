@@ -1,32 +1,32 @@
-检查图片是否一眼 AI，是否有明显的生成痕迹。
+Check whether images are obviously AI-generated or have visible generation artifacts.
 
-## 检查维度
+## Check dimensions
 
-1. 真实性风险 — 图片是否有典型 AI 生成特征（过度光滑、不自然的光影、畸形细节）
-2. 海报感风险 — 图片是否像营销海报而非编辑配图（过度设计、大字标题、霓虹配色）
-3. 风格一致性 — 同一篇文章的多张图是否风格统一，不会一张写实一张赛博朋克
-4. 来源可信度 — public 来源的图是否有可验证的出处（source_url, license）
+1. Authenticity risk — does the image have typical AI generation features (overly smooth, unnatural lighting, deformed details)
+2. Poster risk — does the image look like a marketing poster rather than editorial imagery (over-designed, large text titles, neon colors)
+3. Style consistency — do multiple images in the same article maintain consistent style, avoiding one realistic and one cyberpunk
+4. Source credibility — do public-source images have verifiable provenance (source_url, license)
 
-## 高风险信号
+## High-risk signals
 
-- 人物面部/手部畸形
-- 文字乱码或不可读的伪文字
-- 过度对称的构图
-- 不自然的景深或光源方向
-- 霓虹蓝紫、3D 渲染、赛博朋克风格
-- 无来源的"真实照片"（可能是 AI 生成伪装）
+- Deformed human faces/hands
+- Garbled text or unreadable pseudo-text
+- Overly symmetrical composition
+- Unnatural depth of field or light source direction
+- Neon blue-purple, 3D rendering, cyberpunk style
+- "Real photographs" without source attribution (may be AI-generated disguised as real)
 
-## 通过标准
+## Pass criteria
 
-- 封面图不能有明显 AI 痕迹（读者第一眼看到的图）
-- public 来源的图必须有 source_url 和 license
-- generated 来源的图必须标注为 AI 生成
+- Cover image must not have obvious AI artifacts (it is the first image the reader sees)
+- Public-source images must have source_url and license
+- Generated-source images must be labeled as AI-generated
 
-## 输出
+## Output
 
 ```
 ok: true | false
 risk_level: low | medium | high
-issues: ["具体问题描述"]
-needs_replacement: ["需要替换的图位 filename"]
+issues: ["specific issue description"]
+needs_replacement: ["filename of slot needing replacement"]
 ```

@@ -145,7 +145,7 @@ class PublicImageTests(unittest.TestCase):
 
         self.assertLessEqual(len(query), 72)
         self.assertIn("AI", query)
-        self.assertTrue("会议" in query or "现场" in query)
+        self.assertTrue("conference" in query or "business" in query)
         self.assertNotIn("在 Prompt 撰写规范上，应要求团队剥离文学修辞", query)
 
     def test_query_variants_for_commons_adds_fallbacks(self) -> None:

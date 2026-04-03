@@ -1,39 +1,39 @@
-检查文章是否像作者在表达，而不是模型在凑稿。
+Check whether the article sounds like the author expressing ideas, rather than a model padding content.
 
-## 检查维度
+## Check dimensions
 
-1. 模板感 — 是否出现"值得注意的是""不难发现""某种程度上""在当下这个时代""总的来说""换句话说"等空泛过渡
-2. 列表腔 — 是否用"首先/其次/最后""第一/第二/第三"推进全文，而不是因果推进
-3. 空泛程度 — 是否有段落删掉后不影响全文论证（说明这段是凑字数）
-4. 段落节奏 — 是否连续三段以上结构相同（开头判断 + 展开 + 收束的机械重复）
-5. 标签残留 — 是否出现"标题：""导语：""正文：""标题备选""总结："等模板标签
+1. Template feel — presence of filler transitions like "值得注意的是", "不难发现", "某种程度上", "在当下这个时代", "总的来说", "换句话说"
+2. List-speak — using "首先/其次/最后" or "第一/第二/第三" to drive the entire article instead of causal progression
+3. Hollowness — paragraphs that could be deleted without affecting the article's argumentation (indicating padding)
+4. Paragraph rhythm — three or more consecutive paragraphs with identical structure (mechanical repetition of opening judgment + development + closure)
+5. Label residue — presence of template labels like "标题：", "导语：", "正文：", "标题备选", "总结："
 
-## 评分逻辑
+## Scoring logic
 
 voice_score = 100 - filler_hits × 18 - repeated_paragraphs × 20 - template_hits × 15
 
-template_hits 包括：标题：、导语：、总结：、首先、其次、最后
+template_hits include: "标题：", "导语：", "总结：", "首先", "其次", "最后"
 
-## 通过标准
+## Pass criteria
 
 - voice_score ≥ 70
-- 正文不以 `**标题` 开头
-- 无模板标签残留
+- Article body does not start with `**标题`
+- No template label residue
 
-## 输出
+## Output
 
 ```
 ok: true | false
-voice_score: 数字
-filler_count: 数字
-template_hits: 数字
-repeated_paragraphs: 数字
-problems: ["具体问题描述"]
+voice_score: number
+filler_count: number
+template_hits: number
+repeated_paragraphs: number
+problems: ["specific problem description"]
 ```
 
-## 常见失败模式
+## Common failure modes
 
-- 开头用"在当下这个时代"铺垫，而不是直接给判断
-- 每段都是"X 很重要。因为 Y。所以 Z。"的机械结构
-- 结尾用"总的来说"收束，没有给读者新的认知
-- 正文里混入了"标题备选：""导语："等生成痕迹
+- Opening with "在当下这个时代" as preamble instead of directly stating the judgment
+- Every paragraph follows the mechanical structure of "X is important. Because Y. Therefore Z."
+- Ending with "总的来说" without giving the reader new cognition
+- Article body contains generation artifacts like "标题备选：" or "导语："

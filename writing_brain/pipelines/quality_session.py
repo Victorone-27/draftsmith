@@ -20,6 +20,14 @@ from ..writer import run_writer_turn
 
 ARCHETYPES = ("industry_analysis", "operator_retrospective", "method_breakdown")
 
+# Canonical pipeline step order. Behavioral contract tests assert this constant.
+# Do NOT reorder or remove steps without updating tests/test_behavioral_contracts.py.
+PIPELINE_STEPS = (
+    "assignment", "research", "diagnosis", "blueprint",
+    "compose", "quality_evaluation", "image_brief",
+    "delivery", "post_review",
+)
+
 
 def run_quality_session(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]:
     ensure_runtime_dirs(config)
@@ -256,15 +264,15 @@ def build_delivery(payload: dict[str, Any], config: AppConfig) -> dict[str, Any]
 
 
 def build_assignment_contract(payload: dict[str, Any], *, context_pack: dict[str, Any], run_id: str) -> dict[str, Any]:
-    topic = str(payload.get("topic") or context_pack.get("topic") or "未命名主题").strip()
-    user_goal = str(payload.get("user_goal") or context_pack.get("user_goal") or "写出一篇可直接交付的文章").strip()
+    topic = str(payload.get("topic") or context_pack.get("topic") or "Untitled topic").strip()
+    user_goal = str(payload.get("user_goal") or context_pack.get("user_goal") or "Produce a directly deliverable article").strip()
     target_platforms = normalize_platform_list(payload.get("target_platforms") or context_pack.get("target_platforms"))
     platform = normalize_platform(payload.get("platform") or context_pack.get("platform") or (target_platforms[0] if target_platforms else "wechat"))
     if not target_platforms:
         target_platforms = [platform]
     elif platform not in target_platforms:
         target_platforms = [platform, *[item for item in target_platforms if item != platform]]
-    tone_target = str(payload.get("tone_target") or context_pack.get("tone_target") or "判断先行，论证连续，避免模板腔").strip()
+    tone_target = str(payload.get("tone_target") or context_pack.get("tone_target") or "Judgment-first, continuous argumentation, avoid template-speak").strip()
     title = str(payload.get("title") or topic).strip()
     return {
         "contract_name": "assignment_contract",
@@ -382,24 +390,24 @@ def build_article_blueprint(
     evidence_plan = [item["statement"] for item in research_pack.get("evidence_items") or []][:3]
     if diagnosis["primary_archetype"] == "operator_retrospective":
         sections = [
-            _section("问题是怎么暴露的", "先给判断，再交代触发场景和错位感。"),
-            _section("为什么会出问题", "拆关键误判、组织约束和执行路径。"),
-            _section("这次真正学到什么", "给出可迁移的经验和边界。"),
-            _section("下一步怎么用", "把经验落回读者可执行动作。"),
+            _section("How the problem surfaced", "Lead with the judgment, then describe the triggering scene and dissonance."),
+            _section("Why it went wrong", "Break down key misjudgments, organizational constraints, and execution paths."),
+            _section("What was truly learned", "Provide transferable lessons and boundaries."),
+            _section("How to apply it next", "Translate lessons into actionable steps for the reader."),
         ]
     elif diagnosis["primary_archetype"] == "method_breakdown":
         sections = [
-            _section("先给方法判断", "告诉读者这套方法适用什么问题。"),
-            _section("方法为什么有效", "解释底层机制，不只列步骤。"),
-            _section("具体怎么做", "给步骤、动作和验证方式。"),
-            _section("哪里最容易做错", "给边界、反例和失败信号。"),
+            _section("Lead with the method judgment", "Tell the reader what problem this method solves."),
+            _section("Why the method works", "Explain the underlying mechanism, not just list steps."),
+            _section("How to do it concretely", "Provide steps, actions, and verification methods."),
+            _section("Where mistakes are most likely", "Provide boundaries, counterexamples, and failure signals."),
         ]
     else:
         sections = [
-            _section("先把核心判断说透", "开头直接给观点，不先铺背景。"),
-            _section("为什么现在成立", "解释时机、环境变化和因果链。"),
-            _section("真正影响会落到哪里", "分析组织、产品或产业后果。"),
-            _section("读者该怎么理解和行动", "给边界、动作和收束。"),
+            _section("State the core judgment clearly", "Open with the opinion directly, do not set up background first."),
+            _section("Why it holds now", "Explain timing, environmental changes, and causal chains."),
+            _section("Where the real impact lands", "Analyze organizational, product, or industry consequences."),
+            _section("How the reader should understand and act", "Provide boundaries, actions, and closure."),
         ]
     return {
         "contract_name": "article_blueprint",
@@ -407,13 +415,13 @@ def build_article_blueprint(
         "prompt_asset": load_prompt_asset("build_blueprint.md"),
         "main_claim": main_claim,
         "compose_brief": compact_whitespace(
-            f"\u56f4\u7ed5\u300c{main_claim}\u300d\u6210\u7a3f\uff0c\u4fdd\u6301\u5224\u65ad\u5148\u884c\u3001\u8bba\u8bc1\u8fde\u7eed\uff0c\u91cd\u70b9\u8986\u76d6\uff1a"
-            + "；".join(section["heading"] for section in sections)
+            f"Compose around '{main_claim}', maintain judgment-first continuous argumentation, key coverage: "
+            + "; ".join(section["heading"] for section in sections)
         ),
         "must_cover_points": list(dict.fromkeys([*(assignment.get("must_cover_points") or []), main_claim])),
         "evidence_plan": evidence_plan,
         "sections": sections,
-        "closing_goal": "让读者带着更清晰的判断和可执行动作离开，而不是只记住一个口号。",
+        "closing_goal": "Leave the reader with a clearer judgment and actionable next steps, not just a slogan.",
     }
 
 
@@ -514,7 +522,7 @@ def build_image_brief(
             "anchor": blueprint["main_claim"],
             "source_priority": ["generated", "public"],
             "allowed_source_types": ["generated", "public"],
-            "disallowed_styles": ["海报感", "赛博朋克", "机器人", "一眼 AI"],
+            "disallowed_styles": ["poster-like", "cyberpunk", "robots", "obviously AI"],
         }
     ]
     second_role = "data_chart" if primary == "industry_analysis" else ("scene_photo" if primary == "operator_retrospective" else "product_screenshot")
@@ -526,7 +534,7 @@ def build_image_brief(
             "anchor": anchors[0],
             "source_priority": ["public", "generated" if second_role == "data_chart" else "public"],
             "allowed_source_types": ["public"] if second_role in {"scene_photo", "product_screenshot"} else ["public", "generated"],
-            "disallowed_styles": ["假截图", "AI 海报感", "过度装饰"],
+            "disallowed_styles": ["fake screenshots", "AI poster aesthetic", "over-decoration"],
         }
     )
     slots.append(
@@ -537,7 +545,7 @@ def build_image_brief(
             "anchor": anchors[-1],
             "source_priority": ["public", "generated"],
             "allowed_source_types": ["public", "generated"] if primary != "operator_retrospective" else ["public"],
-            "disallowed_styles": ["霓虹蓝紫", "3D 渲染", "廉价科幻"],
+            "disallowed_styles": ["neon blue-purple", "3D rendering", "cheap sci-fi"],
         }
     )
     return {
@@ -635,7 +643,7 @@ def _compose_article(
                 "user_goal": assignment["user_goal"],
                 "tone_target": assignment["tone_target"],
                 "must_cover_points": blueprint["must_cover_points"],
-                "project_constraints": [*(assignment.get("constraints") or []), "先按 article_blueprint 论证链成稿"],
+                "project_constraints": [*(assignment.get("constraints") or []), "Follow the article_blueprint argument chain for composition"],
                 "evidence_needs": blueprint["evidence_plan"],
             },
             "user_message": str(payload.get("draft_message") or blueprint["compose_brief"]).strip(),
@@ -838,9 +846,9 @@ def _derive_main_claim(assignment: dict[str, Any], research_pack: dict[str, Any]
 
 def _diagnosis_recommendation(primary: str) -> str:
     mapping = {
-        "industry_analysis": "用判断 -> 成因 -> 影响 -> 动作的顺序推进，不要写成热点评论。",
-        "operator_retrospective": "用场景和决策链推进，不要写成抽象经验总结。",
-        "method_breakdown": "先说明适用条件，再给步骤和失败边界。",
+        "industry_analysis": "Progress in the order: judgment → causes → impact → action. Do not write as a hot-take commentary.",
+        "operator_retrospective": "Progress through scenes and decision chains. Do not write as an abstract lessons-learned summary.",
+        "method_breakdown": "State applicability conditions first, then provide steps and failure boundaries.",
     }
     return mapping[primary]
 

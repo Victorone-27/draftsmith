@@ -308,6 +308,20 @@ def _compact_commons_query(query: str) -> str:
         "团队",
         "协作",
         "工业化",
+        "artificial intelligence",
+        "comic drama",
+        "animation",
+        "manga",
+        "video",
+        "workflow",
+        "content production",
+        "model",
+        "prompt engineering",
+        "character",
+        "scene",
+        "team",
+        "collaboration",
+        "industrialization",
     ]:
         if token.lower() in normalized.lower() and token not in keywords:
             keywords.append(token)

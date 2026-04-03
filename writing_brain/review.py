@@ -268,7 +268,7 @@ def _run_ppchat_article_reviewer_layer(
     prompt = _build_model_reviewer_prompt(payload, heuristic_report)
     model_result = call_ppchat_chat(
         prompt=prompt,
-        system_prompt="你是严格的中文文章 reviewer。你不会给面子分，只输出结构化 JSON 审稿结果。",
+        system_prompt="You are a strict reviewer for Chinese-language articles. No courtesy scores. Output only structured JSON review results.",
         default_model=default_model,
         model_env_vars=model_env_vars,
         temperature=0.1,
@@ -434,7 +434,7 @@ def _maybe_run_native_gemini_reviewer(payload: dict[str, Any], heuristic_report:
     prompt = _build_independent_gemini_structured_prompt(payload, heuristic_report)
     model_result = call_gemini_native_chat(
         prompt=prompt,
-        system_prompt="你是独立中文文章 reviewer。你只做独立评分，不跟随 Claude，也不输出 schema 外字段。",
+        system_prompt="You are an independent reviewer for Chinese-language articles. Score independently without following Claude. Do not output fields outside the schema.",
         default_model=DEFAULT_GEMINI_REVIEWER_MODEL,
         model_env_vars=[
             "WRITING_BRAIN_GEMINI_REVIEWER_MODEL",
@@ -501,7 +501,7 @@ def _maybe_run_packy_gemini_reviewer(payload: dict[str, Any], heuristic_report: 
         prompt = _build_independent_gemini_plaintext_prompt(payload, heuristic_report)
         model_result = call_packy_chat(
             prompt=prompt,
-            system_prompt="你是独立中文文章 reviewer。你只做独立评分，不跟随 Claude，也不输出解释文字。",
+            system_prompt="You are an independent reviewer for Chinese-language articles. Score independently without following Claude. Do not output explanatory text.",
             default_model=DEFAULT_GEMINI_REVIEWER_MODEL,
             model_env_vars=[
                 "PACKYAPI_REVIEWER_MODEL",
@@ -552,7 +552,7 @@ def _maybe_run_packy_gemini_schema_reviewer(payload: dict[str, Any], heuristic_r
     prompt = _build_independent_gemini_structured_prompt(payload, heuristic_report)
     model_result = call_packy_chat(
         prompt=prompt,
-        system_prompt="你是独立中文文章 reviewer。你只做独立评分，不跟随 Claude，只输出合法 JSON。",
+        system_prompt="You are an independent reviewer for Chinese-language articles. Score independently without following Claude. Output only valid JSON.",
         default_model=DEFAULT_GEMINI_REVIEWER_MODEL,
         model_env_vars=[
             "PACKYAPI_REVIEWER_MODEL",
@@ -648,7 +648,7 @@ def _maybe_run_procedural_reviewer(
     )
     model_result = call_ppchat_chat(
         prompt=prompt,
-        system_prompt="你是议事记录官，只负责判断评审流程是否异常，不负责裁决文章质量。只输出 JSON。",
+        system_prompt="You are the procedural clerk. Judge only whether the review process is abnormal. Do not judge article quality. Output only JSON.",
         default_model=DEFAULT_PROCEDURAL_MODEL,
         model_env_vars=["PPCHAT_PROCEDURAL_MODEL", "WRITING_BRAIN_PROCEDURAL_MODEL"],
         temperature=0.1,
@@ -729,73 +729,73 @@ def _merge_review_reports(heuristic_report: dict[str, Any], model_layer: dict[st
 def _build_model_reviewer_prompt(payload: dict[str, Any], heuristic_report: dict[str, Any]) -> str:
     draft_text = str(payload.get("draft_text") or payload.get("draft_markdown") or "").strip()
     context_pack = dict(payload.get("context_pack") or {})
-    must_cover = "\n".join(f"- {item}" for item in context_pack.get("must_cover_points", [])[:6]) or "- 暂无"
-    claims = "\n".join(f"- {item.get('title')}" for item in context_pack.get("core_claims", [])[:5] if item.get("title")) or "- 暂无"
-    platform_rules = "\n".join(f"- {item}" for item in context_pack.get("platform_rules", [])[:6]) or "- 暂无"
-    style_rules = "\n".join(f"- {item}" for item in context_pack.get("style_rules", [])[:6]) or "- 暂无"
-    project_constraints = "\n".join(f"- {item}" for item in context_pack.get("project_constraints", [])[:6]) or "- 暂无"
-    evidence_needs = "\n".join(f"- {item}" for item in context_pack.get("evidence_needs", [])[:6]) or "- 暂无"
-    heuristic_issues = "\n".join(f"- {item.get('summary')}" for item in heuristic_report.get("top_issues", [])[:5]) or "- 暂无"
+    must_cover = "\n".join(f"- {item}" for item in context_pack.get("must_cover_points", [])[:6]) or "- none"
+    claims = "\n".join(f"- {item.get('title')}" for item in context_pack.get("core_claims", [])[:5] if item.get("title")) or "- none"
+    platform_rules = "\n".join(f"- {item}" for item in context_pack.get("platform_rules", [])[:6]) or "- none"
+    style_rules = "\n".join(f"- {item}" for item in context_pack.get("style_rules", [])[:6]) or "- none"
+    project_constraints = "\n".join(f"- {item}" for item in context_pack.get("project_constraints", [])[:6]) or "- none"
+    evidence_needs = "\n".join(f"- {item}" for item in context_pack.get("evidence_needs", [])[:6]) or "- none"
+    heuristic_issues = "\n".join(f"- {item.get('summary')}" for item in heuristic_report.get("top_issues", [])[:5]) or "- none"
 
-    return f"""请对下面这篇中文文章做严格审稿，并只返回 JSON，不要写解释文字，不要加 markdown 代码块。
+    return f"""Strictly review the following Chinese-language article and return only JSON. Do not write explanatory text. Do not add markdown code blocks.
 
-你要重点判断：
-1. 有没有跑题或偷懒。
-2. 篇幅是否够支撑判断，不够长就不要给高分。
-3. 内容深度是否足够，是否讲清为什么成立、边界在哪里。
-4. 论证是否有效，是否有因果链、对比、例子或推导支撑。
-5. 有没有模板味、空话、重复表达。
-6. 排版是否真的符合平台写法。
+Focus on:
+1. Whether the article is off-topic or lazy.
+2. Whether the length is sufficient to support its claims — do not give high scores if too short.
+3. Whether the depth is adequate — does it explain why claims hold and where the boundaries are.
+4. Whether the argumentation is effective — causal chains, comparisons, examples, or logical derivation.
+5. Whether there is template-like filler, empty rhetoric, or repetitive phrasing.
+6. Whether the formatting genuinely matches the target platform conventions.
 
-文章主题：{context_pack.get("topic", "")}
-平台：{context_pack.get("platform", "")}
-目标：{context_pack.get("user_goal", "")}
-受众：{context_pack.get("audience", "")}
+Topic: {context_pack.get("topic", "")}
+Platform: {context_pack.get("platform", "")}
+Goal: {context_pack.get("user_goal", "")}
+Audience: {context_pack.get("audience", "")}
 
-必须覆盖：
+Must cover:
 {must_cover}
 
-历史观点参考（仅用于检查是否明显冲突，不是必须复用）：
+Historical claims for reference (only check for obvious conflicts, not required to reuse):
 {claims}
 
-平台规则：
+Platform rules:
 {platform_rules}
 
-风格规则：
+Style rules:
 {style_rules}
 
-排版检查：
-- 母稿默认应是 `# 标题` 后直接进入正文
-- 不应出现“标题：”“导语：”“正文：”“标题备选”标签
-- 不应出现 `---` 分割线和明显模板化编号小标题
-- 默认应少用甚至不用 `##` 小标题，除非篇幅和信息密度确实需要
+Formatting checks:
+- The master draft should default to `# Title` followed directly by body text
+- Do not contain labels like "标题：", "导语：", "正文：", "标题备选"
+- Do not contain `---` dividers or obviously templated numbered subheadings
+- Prefer minimal or no `##` subheadings unless length and information density truly require them
 
-项目硬约束：
+Project hard constraints:
 {project_constraints}
 
-待补论据：
+Evidence gaps:
 {evidence_needs}
 
-规则层初判问题：
+Heuristic layer preliminary issues:
 {heuristic_issues}
 
-规则层维度：
+Heuristic layer dimensions:
 - length_ok: {((heuristic_report.get("expanded_checks") or {}).get("length_ok"))}
 - depth_ok: {((heuristic_report.get("expanded_checks") or {}).get("depth_ok"))}
 - argument_ok: {((heuristic_report.get("expanded_checks") or {}).get("argument_ok"))}
 - formatting_ok: {((heuristic_report.get("expanded_checks") or {}).get("formatting_ok"))}
 
-待审稿件：
-{draft_text or "无"}
+Article under review:
+{draft_text or "none"}
 
-请输出极短 JSON，尽量单行，不要超过 220 个字符，结构如下：
+Output minimal JSON, ideally single-line, no more than 220 characters, with this structure:
 {{
-  "semantic_score": 0-100 的整数,
+  "semantic_score": integer 0-100,
   "decision": "pass" | "revise" | "rewrite",
-  "confidence": 0-1 的小数,
-  "issue": "最关键的一个问题，15字内",
-  "action": "最关键的一个修改动作，18字内",
-  "strength": "最关键的一个优点，15字内"
+  "confidence": float 0-1,
+  "issue": "single most critical issue, under 15 words",
+  "action": "single most critical fix action, under 18 words",
+  "strength": "single most notable strength, under 15 words"
 }}
 """
 
@@ -803,123 +803,123 @@ def _build_model_reviewer_prompt(payload: dict[str, Any], heuristic_report: dict
 def _build_independent_gemini_plaintext_prompt(payload: dict[str, Any], heuristic_report: dict[str, Any]) -> str:
     draft_text = str(payload.get("draft_text") or payload.get("draft_markdown") or "").strip()
     context_pack = dict(payload.get("context_pack") or {})
-    must_cover = "\n".join(f"- {item}" for item in context_pack.get("must_cover_points", [])[:6]) or "- 暂无"
-    claims = "\n".join(f"- {item.get('title')}" for item in context_pack.get("core_claims", [])[:5] if item.get("title")) or "- 暂无"
-    platform_rules = "\n".join(f"- {item}" for item in context_pack.get("platform_rules", [])[:6]) or "- 暂无"
-    style_rules = "\n".join(f"- {item}" for item in context_pack.get("style_rules", [])[:6]) or "- 暂无"
-    project_constraints = "\n".join(f"- {item}" for item in context_pack.get("project_constraints", [])[:6]) or "- 暂无"
-    evidence_needs = "\n".join(f"- {item}" for item in context_pack.get("evidence_needs", [])[:6]) or "- 暂无"
-    heuristic_issues = "\n".join(f"- {item.get('summary')}" for item in heuristic_report.get("top_issues", [])[:5]) or "- 暂无"
+    must_cover = "\n".join(f"- {item}" for item in context_pack.get("must_cover_points", [])[:6]) or "- none"
+    claims = "\n".join(f"- {item.get('title')}" for item in context_pack.get("core_claims", [])[:5] if item.get("title")) or "- none"
+    platform_rules = "\n".join(f"- {item}" for item in context_pack.get("platform_rules", [])[:6]) or "- none"
+    style_rules = "\n".join(f"- {item}" for item in context_pack.get("style_rules", [])[:6]) or "- none"
+    project_constraints = "\n".join(f"- {item}" for item in context_pack.get("project_constraints", [])[:6]) or "- none"
+    evidence_needs = "\n".join(f"- {item}" for item in context_pack.get("evidence_needs", [])[:6]) or "- none"
+    heuristic_issues = "\n".join(f"- {item.get('summary')}" for item in heuristic_report.get("top_issues", [])[:5]) or "- none"
 
-    return f"""请独立审查下面这篇中文文章，并只返回固定五行纯文本，不要 JSON，不要解释，不要说 Here，不要加标题。
+    return f"""Independently review the following Chinese-language article. Return exactly five lines of plain text. No JSON, no explanations, no preamble like "Here", no headings.
 
-你不是改稿人，只负责独立评分。
-你需要判断：
-1. 核心判断是否清楚。
-2. 论据是否扎实。
-3. 是否存在重复、空话、模板味。
-4. 是否真的符合平台写法。
+You are not an editor — your only job is to score independently.
+Evaluate:
+1. Whether the core argument is clear.
+2. Whether the evidence is solid.
+3. Whether there is repetition, empty rhetoric, or template-like filler.
+4. Whether the formatting genuinely matches the target platform conventions.
 
-文章主题：{context_pack.get("topic", "")}
-平台：{context_pack.get("platform", "")}
-目标：{context_pack.get("user_goal", "")}
-受众：{context_pack.get("audience", "")}
+Topic: {context_pack.get("topic", "")}
+Platform: {context_pack.get("platform", "")}
+Goal: {context_pack.get("user_goal", "")}
+Audience: {context_pack.get("audience", "")}
 
-必须覆盖：
+Must cover:
 {must_cover}
 
-历史观点参考（仅用于检查是否明显冲突，不是必须复用）：
+Historical claims for reference (only check for obvious conflicts, not required to reuse):
 {claims}
 
-平台规则：
+Platform rules:
 {platform_rules}
 
-风格规则：
+Style rules:
 {style_rules}
 
-排版检查：
-- 母稿默认应是 `# 标题` 后直接进入正文
-- 不应出现“标题：”“导语：”“正文：”“标题备选”标签
-- 不应出现 `---` 分割线和明显模板化编号小标题
-- 默认应少用甚至不用 `##` 小标题，除非篇幅和信息密度确实需要
+Formatting checks:
+- The master draft should default to `# Title` followed directly by body text
+- Do not contain labels like "标题：", "导语：", "正文：", "标题备选"
+- Do not contain `---` dividers or obviously templated numbered subheadings
+- Prefer minimal or no `##` subheadings unless length and information density truly require them
 
-项目硬约束：
+Project hard constraints:
 {project_constraints}
 
-待补论据：
+Evidence gaps:
 {evidence_needs}
 
-程序层提示问题：
+Heuristic layer flagged issues:
 {heuristic_issues}
 
-待审稿件：
-{draft_text or "无"}
+Article under review:
+{draft_text or "none"}
 
-只输出这五行，字段名必须完全一致：
-SCORE: 0-100整数
+Output exactly these five lines, field names must match exactly:
+SCORE: integer 0-100
 DECISION: pass|revise|rewrite
-ISSUE: 最关键的一个问题，15字内
-ACTION: 最关键的一个修改动作，18字内
-STRENGTH: 最关键的一个优点，15字内
+ISSUE: single most critical issue, under 15 words
+ACTION: single most critical fix action, under 18 words
+STRENGTH: single most notable strength, under 15 words
 """
 
 
 def _build_independent_gemini_structured_prompt(payload: dict[str, Any], heuristic_report: dict[str, Any]) -> str:
     draft_text = str(payload.get("draft_text") or payload.get("draft_markdown") or "").strip()
     context_pack = dict(payload.get("context_pack") or {})
-    must_cover = "\n".join(f"- {item}" for item in context_pack.get("must_cover_points", [])[:6]) or "- 暂无"
-    claims = "\n".join(f"- {item.get('title')}" for item in context_pack.get("core_claims", [])[:5] if item.get("title")) or "- 暂无"
-    platform_rules = "\n".join(f"- {item}" for item in context_pack.get("platform_rules", [])[:6]) or "- 暂无"
-    style_rules = "\n".join(f"- {item}" for item in context_pack.get("style_rules", [])[:6]) or "- 暂无"
-    project_constraints = "\n".join(f"- {item}" for item in context_pack.get("project_constraints", [])[:6]) or "- 暂无"
-    evidence_needs = "\n".join(f"- {item}" for item in context_pack.get("evidence_needs", [])[:6]) or "- 暂无"
-    heuristic_issues = "\n".join(f"- {item.get('summary')}" for item in heuristic_report.get("top_issues", [])[:5]) or "- 暂无"
+    must_cover = "\n".join(f"- {item}" for item in context_pack.get("must_cover_points", [])[:6]) or "- none"
+    claims = "\n".join(f"- {item.get('title')}" for item in context_pack.get("core_claims", [])[:5] if item.get("title")) or "- none"
+    platform_rules = "\n".join(f"- {item}" for item in context_pack.get("platform_rules", [])[:6]) or "- none"
+    style_rules = "\n".join(f"- {item}" for item in context_pack.get("style_rules", [])[:6]) or "- none"
+    project_constraints = "\n".join(f"- {item}" for item in context_pack.get("project_constraints", [])[:6]) or "- none"
+    evidence_needs = "\n".join(f"- {item}" for item in context_pack.get("evidence_needs", [])[:6]) or "- none"
+    heuristic_issues = "\n".join(f"- {item.get('summary')}" for item in heuristic_report.get("top_issues", [])[:5]) or "- none"
 
-    return f"""请独立审查下面这篇中文文章。
+    return f"""Independently review the following Chinese-language article.
 
-你不是改稿人，只负责独立评分，不参考 Claude 立场。
-你需要判断：
-1. 核心判断是否清楚。
-2. 论据是否扎实。
-3. 是否存在重复、空话、模板味。
-4. 是否真的符合平台写法。
+You are not an editor — your only job is to score independently, without referencing Claude's position.
+Evaluate:
+1. Whether the core argument is clear.
+2. Whether the evidence is solid.
+3. Whether there is repetition, empty rhetoric, or template-like filler.
+4. Whether the formatting genuinely matches the target platform conventions.
 
-文章主题：{context_pack.get("topic", "")}
-平台：{context_pack.get("platform", "")}
-目标：{context_pack.get("user_goal", "")}
-受众：{context_pack.get("audience", "")}
+Topic: {context_pack.get("topic", "")}
+Platform: {context_pack.get("platform", "")}
+Goal: {context_pack.get("user_goal", "")}
+Audience: {context_pack.get("audience", "")}
 
-必须覆盖：
+Must cover:
 {must_cover}
 
-历史观点参考（仅用于检查是否明显冲突，不是必须复用）：
+Historical claims for reference (only check for obvious conflicts, not required to reuse):
 {claims}
 
-平台规则：
+Platform rules:
 {platform_rules}
 
-风格规则：
+Style rules:
 {style_rules}
 
-排版检查：
-- 母稿默认应是 `# 标题` 后直接进入正文
-- 不应出现“标题：”“导语：”“正文：”“标题备选”标签
-- 不应出现 `---` 分割线和明显模板化编号小标题
-- 默认应少用甚至不用 `##` 小标题，除非篇幅和信息密度确实需要
+Formatting checks:
+- The master draft should default to `# Title` followed directly by body text
+- Do not contain labels like "标题：", "导语：", "正文：", "标题备选"
+- Do not contain `---` dividers or obviously templated numbered subheadings
+- Prefer minimal or no `##` subheadings unless length and information density truly require them
 
-项目硬约束：
+Project hard constraints:
 {project_constraints}
 
-待补论据：
+Evidence gaps:
 {evidence_needs}
 
-程序层提示问题：
+Heuristic layer flagged issues:
 {heuristic_issues}
 
-待审稿件：
-{draft_text or "无"}
+Article under review:
+{draft_text or "none"}
 
-请按给定 schema 返回，不要输出 schema 外字段。"""
+Return according to the given schema. Do not output fields outside the schema."""
 
 
 def _build_gemini_review_json_schema() -> dict[str, Any]:
@@ -932,24 +932,24 @@ def _build_gemini_review_json_schema() -> dict[str, Any]:
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 100,
-                "description": "独立审稿总分",
+                "description": "Independent review total score",
             },
             "decision": {
                 "type": "string",
                 "enum": ["pass", "revise", "rewrite"],
-                "description": "独立审稿结论",
+                "description": "Independent review verdict",
             },
             "issue": {
                 "type": "string",
-                "description": "最关键的一个问题，尽量简短",
+                "description": "Single most critical issue, keep brief",
             },
             "action": {
                 "type": "string",
-                "description": "最关键的一个修改动作，尽量简短",
+                "description": "Single most critical fix action, keep brief",
             },
             "strength": {
                 "type": "string",
-                "description": "最关键的一个优点，尽量简短",
+                "description": "Single most notable strength, keep brief",
             },
         },
     }
@@ -964,40 +964,40 @@ def _build_procedural_reviewer_prompt(
     baseline_flags: list[str],
 ) -> str:
     context_pack = dict(payload.get("context_pack") or {})
-    baseline_flags_text = "\n".join(f"- {item}" for item in baseline_flags) or "- 无"
-    return f"""请只判断这次审稿流程本身是否异常，不要评价文章质量高低，不要替用户做最终裁决。
+    baseline_flags_text = "\n".join(f"- {item}" for item in baseline_flags) or "- none"
+    return f"""Judge only whether this review process itself is abnormal. Do not evaluate article quality. Do not make the final decision for the user.
 
-主题：{context_pack.get("topic", "")}
-平台：{context_pack.get("platform", "")}
+Topic: {context_pack.get("topic", "")}
+Platform: {context_pack.get("platform", "")}
 
-Claude 主审票：
+Claude primary vote:
 - valid_vote: {claude_vote.get("valid_vote")}
 - score: {claude_vote.get("score")}
 - decision: {claude_vote.get("decision")}
 - issue: {claude_vote.get("issue")}
 
-Gemini 独立票：
+Gemini independent vote:
 - valid_vote: {gemini_vote.get("valid_vote")}
 - score: {gemini_vote.get("score")}
 - decision: {gemini_vote.get("decision")}
 - issue: {gemini_vote.get("issue")}
 
-启发式证据：
+Heuristic evidence:
 - total_score: {heuristic_report.get("total_score")}
 - decision: {heuristic_report.get("decision")}
 - top_issue: {((heuristic_report.get("top_issues") or [{}])[0].get("summary") or "")}
 
-程序层基础 flags：
+Procedural baseline flags:
 {baseline_flags_text}
 
-只返回 JSON：
+Return only JSON:
 {{
-  "score": 0-100 的整数,
+  "score": integer 0-100,
   "decision": "pass" | "revise" | "rewrite",
-  "abnormal_review": true 或 false,
-  "flags": ["最多3个短 flag"],
-  "reason": "一句话说明异常或不异常",
-  "recommendation": "一句话建议下一步"
+  "abnormal_review": true or false,
+  "flags": ["up to 3 short flags"],
+  "reason": "one sentence explaining whether the process is abnormal",
+  "recommendation": "one sentence suggesting next step"
 }}
 """
 

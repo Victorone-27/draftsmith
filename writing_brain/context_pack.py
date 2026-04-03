@@ -11,23 +11,23 @@ from .text import extract_terms, now_run_id
 
 
 DEFAULT_STYLE_RULES = [
-    "开头不要先铺大背景",
-    "同一个意思不要重复说两次",
-    "没证据的强判断要降级成观察或倾向",
+    "Do not open with broad background context",
+    "Do not repeat the same point twice",
+    "Downgrade unsupported strong claims to observations or tendencies",
 ]
 
 DEFAULT_PLATFORM_RULES = {
     "wechat": [
-        "公众号首屏要尽快给出判断",
-        "结尾不要口号化",
+        "WeChat articles must present the core judgment in the first screen",
+        "Do not end with sloganeering",
     ],
     "xiaohongshu": [
-        "开头要更直接，段落更短",
-        "不要写成长篇论文式推进",
+        "Open more directly with shorter paragraphs",
+        "Do not write in long-essay academic style",
     ],
     "zhihu": [
-        "要有更清楚的问题定义和方法展开",
-        "边界条件要写清楚",
+        "Provide clearer problem definition and method exposition",
+        "Spell out boundary conditions explicitly",
     ],
 }
 
@@ -40,7 +40,7 @@ def build_context_pack(payload: dict[str, Any], config: AppConfig) -> dict[str, 
         target_platforms = [platform]
     user_goal = str(payload.get("user_goal") or "").strip()
     audience = str(payload.get("audience") or "").strip()
-    tone_target = str(payload.get("tone_target") or "锋利但克制").strip()
+    tone_target = str(payload.get("tone_target") or "Sharp but restrained").strip()
     include_recent_articles = bool(payload.get("include_recent_articles", False))
     run_id = str(payload.get("run_id") or now_run_id())
     project_claim_refs = _normalize_text_list(payload.get("project_claim_refs"))
@@ -81,21 +81,21 @@ def build_context_pack(payload: dict[str, Any], config: AppConfig) -> dict[str, 
 
     memory_notes = []
     if claims:
-        memory_notes.append(f"资料库中已找到 {len(claims)} 条高相关 claim，可按相关性选择性复用。")
+        memory_notes.append(f"Found {len(claims)} highly relevant claims in the library — reuse selectively by relevance.")
     if referenced_claims:
-        memory_notes.append(f"项目已显式绑定 {len(referenced_claims)} 条 claim，写作时必须优先使用。")
+        memory_notes.append(f"Project explicitly binds {len(referenced_claims)} claims — must prioritize these during writing.")
     if missing_claim_refs:
-        memory_notes.append(f"项目中有 {len(missing_claim_refs)} 条 claim ref 未命中资料库，需要人工检查。")
+        memory_notes.append(f"{len(missing_claim_refs)} claim refs in the project did not match the library — manual check needed.")
     if structures:
-        memory_notes.append(f"已匹配到 {len(structures)} 个结构模板。")
+        memory_notes.append(f"Matched {len(structures)} structure template(s).")
     if image_plans:
-        memory_notes.append(f"已匹配到 {len(image_plans)} 个配图策略。")
+        memory_notes.append(f"Matched {len(image_plans)} image plan(s).")
     if recent_articles:
-        memory_notes.append(f"已找到 {len(recent_articles)} 篇已发布文章可参考。")
+        memory_notes.append(f"Found {len(recent_articles)} published article(s) for reference.")
     if project_constraints:
-        memory_notes.append(f"项目有 {len(project_constraints)} 条禁止项或硬约束。")
+        memory_notes.append(f"Project has {len(project_constraints)} constraint(s) or hard rules.")
     if evidence_needs:
-        memory_notes.append(f"项目列出 {len(evidence_needs)} 条待补外部论据。")
+        memory_notes.append(f"Project lists {len(evidence_needs)} external evidence need(s) to fill.")
 
     return {
         "contract_name": "context_pack",
@@ -135,7 +135,7 @@ def build_context_pack(payload: dict[str, Any], config: AppConfig) -> dict[str, 
                 "source_id": source.item_id,
                 "title": source.title,
                 "source_url": str(source.meta.get("source_url") or ""),
-                "why_relevant": f"与主题“{topic}”或目标“{user_goal}”有较高相关性",
+                "why_relevant": f"Highly relevant to topic '{topic}' or goal '{user_goal}'",
             }
             for source in sources
         ],
@@ -251,8 +251,8 @@ def _image_plan_hint(body: str) -> str:
 def _structure_reason(structure: Any, platform: str) -> str:
     fit_platforms = [normalize_platform(item, default="") for item in structure.meta.get("fit_platforms") or []]
     if platform in fit_platforms:
-        return f"模板明确适配 {platform}"
-    return "与当前主题和目标较匹配"
+        return f"Template explicitly fits {platform}"
+    return "Matches current topic and goal"
 
 
 def _load_recent_knowledge(config: AppConfig, *, topic: str, platform: str) -> tuple[list[dict[str, Any]], list[str]]:
@@ -271,11 +271,11 @@ def _load_recent_knowledge(config: AppConfig, *, topic: str, platform: str) -> t
             continue
         entities.append(entity)
         if entity.get("entity_type") == "success_pattern":
-            notes.append(f"已学习成功模式：{entity.get('statement')}")
+            notes.append(f"Learned success pattern: {entity.get('statement')}")
         elif entity.get("entity_type") == "anti_pattern":
-            notes.append(f"已学习反模式：{entity.get('statement')}")
+            notes.append(f"Learned anti-pattern: {entity.get('statement')}")
         elif entity.get("entity_type") == "preference_rule":
-            notes.append(f"已学习偏好规则：{entity.get('statement')}")
+            notes.append(f"Learned preference rule: {entity.get('statement')}")
     return entities[:8], list(dict.fromkeys(notes))[:8]
 
 

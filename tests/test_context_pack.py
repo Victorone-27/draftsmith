@@ -100,7 +100,7 @@ name: 观点型-概念图加结构图
             self.assertEqual(result["core_claims"][0]["claim_id"], "c1")
             self.assertEqual(result["preferred_structures"][0]["structure_id"], "s1")
             self.assertTrue(result["memory_knowledge"])
-            self.assertTrue(any("已学习偏好规则" in note for note in result["memory_notes"]))
+            self.assertTrue(any("Learned preference rule" in note for note in result["memory_notes"]))
 
     def test_build_context_pack_preserves_project_constraints_and_claim_refs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -138,7 +138,7 @@ usable_for:
             self.assertEqual(result["project_constraints"], ["不要写成空泛情绪文"])
             self.assertEqual(result["evidence_needs"], ["补 DeepSeek 和百度价格战的外部论据"])
             self.assertEqual(result["core_claims"][0]["claim_id"], "clm-001")
-            self.assertTrue(any("项目已显式绑定" in note for note in result["memory_notes"]))
+            self.assertTrue(any("Project explicitly binds" in note for note in result["memory_notes"]))
 
     def test_build_context_pack_normalizes_platform_alias(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -153,7 +153,7 @@ usable_for:
             )
             self.assertEqual(result["platform"], "zhihu")
             self.assertEqual(result["target_platforms"], ["zhihu"])
-            self.assertIn("边界条件要写清楚", result["platform_rules"])
+            self.assertIn("Spell out boundary conditions explicitly", result["platform_rules"])
 
 
 if __name__ == "__main__":
