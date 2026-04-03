@@ -50,7 +50,7 @@ class SessionOpsTests(unittest.TestCase):
         self.assertEqual(result["status"], "awaiting_acceptance")
         forwarded_payload = mock_run_quality_session.call_args.args[0]
         self.assertTrue(forwarded_payload["enable_post_review_pipeline"])
-        self.assertEqual(forwarded_payload["post_review_profile"], "debug")
+        self.assertEqual(forwarded_payload["post_review_profile"], "delivery")
         self.assertEqual(result["exception_report"]["has_exception"], False)
 
     def test_resolve_exception_reports_review_and_image_issues(self) -> None:
