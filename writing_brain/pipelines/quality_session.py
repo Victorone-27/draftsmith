@@ -439,6 +439,7 @@ def build_quality_evaluation(
     review_report = build_review_report(
         {
             **payload,
+            "run_id": assignment.get("run_id", ""),
             "draft_text": article_markdown,
             "context_pack": {
                 **context_pack,
@@ -615,6 +616,11 @@ def maybe_accept_delivery(payload: dict[str, Any], config: AppConfig) -> dict[st
         ],
     }
     write_json(config.sessions_dir / f"{session_result.get('run_id')}.delivery.json", result)
+    session_path = config.sessions_dir / f"{session_result.get('run_id')}.session.json"
+    if session_path.exists():
+        session_data = json.loads(session_path.read_text(encoding="utf-8"))
+        session_data["status"] = "accepted"
+        write_json(session_path, session_data)
     return result
 
 
@@ -753,7 +759,7 @@ def _session_status(
         return "blocked"
     if not quality_evaluation.get("can_continue_to_delivery"):
         return "exception"
-    if delivery_manifest.get("status") == "blocked":
+    if delivery_manifest.get("status") in {"blocked", "partial"}:
         return "exception"
     if post_review_result and str(post_review_result.get("status") or "").strip().lower() in {"failed", "partial"}:
         return "exception"

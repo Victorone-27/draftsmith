@@ -195,12 +195,17 @@ def _run_publish_pack_stage(payload: dict[str, Any], config: AppConfig, stage_sp
         config,
     )
     output_dir = str(publish_result.get("output_dir") or "").strip()
+    image_review = dict(publish_result.get("image_review_report") or {})
+    image_decision = str(image_review.get("decision") or "").strip().lower()
+    stage_status = "completed" if image_decision == "pass" else "partial"
     next_actions = list(publish_result.get("recommended_next_actions") or [])
-    if output_dir:
+    if output_dir and image_decision == "pass":
         next_actions.insert(0, f"发布包已生成，可直接打开 {output_dir} 里的 Word 文档复制发布。")
+    elif output_dir:
+        next_actions.insert(0, f"纯文本发布包已生成在 {output_dir}，图片审核未通过，尚不可作为图文包发布。")
     return {
         **publish_result,
-        "status": "completed",
+        "status": stage_status,
         "shared_outputs": {
             "publish_pack_output_dir": output_dir,
             "publish_pack_result": publish_result,

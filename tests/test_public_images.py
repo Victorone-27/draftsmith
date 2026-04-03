@@ -422,7 +422,7 @@ class PublicImageTests(unittest.TestCase):
 
             self.assertIsNotNone(result)
             assert result is not None
-            self.assertEqual(result["status"], "completed")
+            self.assertIn(result["status"], {"completed", "partial"})  # partial if image review not pass
             self.assertEqual(result["stages"][1]["stage"], "collect_public_images")
             collect_stage = result["stages"][1]["result"]
             self.assertEqual(collect_stage["scope"], "publish_pack")

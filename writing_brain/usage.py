@@ -125,9 +125,16 @@ def _load_records(usage_dir: Path, *, date: str = "", month: str = "", year: str
     return records
 
 
+def _effective_total(r: dict[str, Any]) -> int:
+    tt = int(r.get("total_tokens") or 0)
+    if tt > 0:
+        return tt
+    return int(r.get("prompt_tokens") or 0) + int(r.get("completion_tokens") or 0)
+
+
 def _aggregate(records: list[dict[str, Any]], period: str) -> dict[str, Any]:
     total_calls = len(records)
-    total_tokens = sum(int(r.get("total_tokens") or 0) for r in records)
+    total_tokens = sum(_effective_total(r) for r in records)
     by_provider: dict[str, dict[str, int]] = {}
     by_model: dict[str, dict[str, int]] = {}
     by_run_id: dict[str, dict[str, int]] = {}
@@ -138,7 +145,7 @@ def _aggregate(records: list[dict[str, Any]], period: str) -> dict[str, Any]:
         rid = str(r.get("run_id") or "unknown")
         pt = int(r.get("prompt_tokens") or 0)
         ct = int(r.get("completion_tokens") or 0)
-        tt = int(r.get("total_tokens") or 0)
+        tt = _effective_total(r)
 
         if provider not in by_provider:
             by_provider[provider] = {"calls": 0, "prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
