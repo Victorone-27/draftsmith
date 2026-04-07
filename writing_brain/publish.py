@@ -82,10 +82,15 @@ def build_publish_pack(payload: dict[str, Any], config: AppConfig) -> dict[str, 
     image_count = max(3, min(int(payload.get("image_count") or DEFAULT_IMAGE_COUNT), 5))
     output_dir = _resolve_output_dir(payload, config, platform=platform, title=title)
     image_dir = output_dir / "图片"
-    generated_dir = image_dir / "已生成"
-    public_dir = image_dir / "公开来源"
-    generated_dir.mkdir(parents=True, exist_ok=True)
-    public_dir.mkdir(parents=True, exist_ok=True)
+    shared_image_dirs = payload.get("shared_image_dirs")
+    if shared_image_dirs:
+        generated_dir = _ensure_shared_image_link(image_dir / "已生成", Path(shared_image_dirs["generated"]))
+        public_dir = _ensure_shared_image_link(image_dir / "公开来源", Path(shared_image_dirs["public"]))
+    else:
+        generated_dir = image_dir / "已生成"
+        public_dir = image_dir / "公开来源"
+        generated_dir.mkdir(parents=True, exist_ok=True)
+        public_dir.mkdir(parents=True, exist_ok=True)
 
     image_plan = _select_image_plan(config, payload, context_pack, article_markdown=article_markdown)
     image_brief = dict(payload.get("image_brief") or {})
@@ -870,6 +875,21 @@ def _compact_public_query_fragment(text: str, *, limit: int) -> str:
     for sep in ["：", "，", "。", "；", "、", ":", ","]:
         normalized = normalized.split(sep, 1)[0]
     return normalized[:limit].strip()
+
+
+def _ensure_shared_image_link(link_path: Path, target_dir: Path) -> Path:
+    """Create a symlink from link_path to target_dir, or return target_dir if already linked."""
+    link_path.parent.mkdir(parents=True, exist_ok=True)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    if link_path.is_symlink():
+        if link_path.resolve() == target_dir.resolve():
+            return target_dir
+        link_path.unlink()
+    elif link_path.exists():
+        # Real directory already exists — skip symlinking, use shared dir directly
+        return target_dir
+    link_path.symlink_to(target_dir)
+    return target_dir
 
 
 def _slot_relative_path(slot: ImageSlot) -> str:

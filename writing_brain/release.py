@@ -47,8 +47,12 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
     output_root = _resolve_release_root(payload, config, topic)
     drafts_dir = output_root / "平台稿"
     packs_dir = output_root / "投稿包"
+    shared_images_dir = output_root / "共享图片"
     drafts_dir.mkdir(parents=True, exist_ok=True)
     packs_dir.mkdir(parents=True, exist_ok=True)
+    shared_images_dir.mkdir(parents=True, exist_ok=True)
+    (shared_images_dir / "已生成").mkdir(exist_ok=True)
+    (shared_images_dir / "公开来源").mkdir(exist_ok=True)
 
     results: list[dict[str, Any]] = []
     manual_platform_articles = {
@@ -250,6 +254,10 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
                 "output_dir": str(packs_dir / platform_name),
                 "image_count": int(payload.get("image_count") or 3),
                 "use_image_governance_review": payload.get("use_image_governance_review"),
+                "shared_image_dirs": {
+                    "generated": str(shared_images_dir / "已生成"),
+                    "public": str(shared_images_dir / "公开来源"),
+                },
             },
             config,
         )
