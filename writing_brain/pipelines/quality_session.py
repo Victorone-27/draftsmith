@@ -396,8 +396,6 @@ def _polish_article_text(text: str, *, assignment: dict[str, Any], blueprint: di
     paragraphs = split_paragraphs(polished)
     if paragraphs and not paragraphs[0].startswith("#"):
         paragraphs[0] = f"# {assignment['title']}"
-    if len(paragraphs) >= 2 and blueprint["main_claim"] not in paragraphs[1]:
-        paragraphs.insert(1, blueprint["main_claim"])
     cleaned = "\n\n".join(paragraphs).strip()
     if not bool(os.environ.get("WRITING_BRAIN_ENABLE_VOICE_POLISH", "")):
         return cleaned
