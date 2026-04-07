@@ -337,11 +337,10 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
     # Generate images once into shared directory, then rebuild all DOCX with images embedded
     _generate_shared_images(shared_images_dir, packs_dir, config, article_markdown)
 
-    # Rebuild all platform DOCX with images now available (skip source — already built above)
+    # Rebuild all platform DOCX with images now available (including source)
     for pr in results:
-        if pr["platform"] == source_platform:
-            continue
-        pack_dir = packs_dir / platform_name
+        pname = pr["platform_name"]
+        pack_dir = packs_dir / pname
         tasks_path = pack_dir / "图片" / "生成任务.json"
         if not tasks_path.exists():
             continue

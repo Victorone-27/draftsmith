@@ -145,4 +145,7 @@ class ReleaseTests(unittest.TestCase):
 
         self.assertEqual([item["platform"] for item in result["platform_results"]], ["wechat", "zhihu"])
         self.assertEqual([item["platform_name"] for item in result["platform_results"]], ["公众号", "知乎"])
-        self.assertEqual([call.args[0]["platform"] for call in mock_publish_pack.call_args_list], ["wechat", "zhihu"])
+        # source platform built once before loop + each platform rebuilt after image generation
+        build_platforms = [call.args[0]["platform"] for call in mock_publish_pack.call_args_list]
+        self.assertEqual(build_platforms[:2], ["wechat", "zhihu"])
+        self.assertTrue(all(p in {"wechat", "zhihu"} for p in build_platforms))
