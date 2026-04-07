@@ -54,7 +54,53 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
     (shared_images_dir / "已生成").mkdir(exist_ok=True)
     (shared_images_dir / "公开来源").mkdir(exist_ok=True)
 
-    results: list[dict[str, Any]] = []
+    # Write source platform master draft into the release output
+    source_platform_name = platform_display_name(source_platform)
+    source_draft_path = drafts_dir / f"{source_platform_name}.md"
+    source_draft_path.write_text(article_markdown + ("\n" if not article_markdown.endswith("\n") else ""), encoding="utf-8")
+    source_pack_dir = packs_dir / source_platform_name
+    source_pack_dir.mkdir(parents=True, exist_ok=True)
+    source_publish_result = build_publish_pack(
+        {
+            "title": _extract_title(article_markdown),
+            "topic": topic,
+            "platform": source_platform,
+            "context_pack": source_context,
+            "article_markdown": article_markdown,
+            "output_dir": str(source_pack_dir),
+            "image_count": int(payload.get("image_count") or 3),
+            "use_image_governance_review": payload.get("use_image_governance_review"),
+            "shared_image_dirs": {
+                "generated": str(shared_images_dir / "已生成"),
+                "public": str(shared_images_dir / "公开来源"),
+            },
+        },
+        config,
+    )
+    source_review = build_review_report({
+        "run_id": f"{run_id}_{source_platform}",
+        "review_id": f"review_{run_id}_{source_platform}",
+        "draft_text": article_markdown,
+        "context_pack": source_context,
+        "platform": source_platform,
+    })
+
+    results: list[dict[str, Any]] = [{
+        "platform": source_platform,
+        "platform_name": source_platform_name,
+        "article_path": str(source_draft_path),
+        "draft_source": "source_article",
+        "draft_turn": None,
+        "revise_turn": None,
+        "expansion_turns": [],
+        "revised_source": "none",
+        "final_decision": source_review.get("decision"),
+        "review_score": source_review.get("total_score"),
+        "review_report": source_review,
+        "article_markdown": article_markdown,
+        "publish_result": source_publish_result,
+        "image_review_report": source_publish_result.get("image_review_report"),
+    }]
     manual_platform_articles = {
         normalize_platform(key, default=""): str(value).strip()
         for key, value in dict(payload.get("manual_platform_articles") or {}).items()
@@ -66,6 +112,8 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
         if normalize_platform(key, default="") and str(value).strip()
     }
     for platform in platforms:
+        if platform == source_platform:
+            continue
         platform_context = build_context_pack(
             {
                 "run_id": f"{run_id}_{platform}",

@@ -81,7 +81,7 @@ class ReleaseTests(unittest.TestCase):
                 {
                     "run_id": "release_expand",
                     "topic": "中国 AI 行业真正危险的不是模型暂时落后",
-                    "platforms": ["wechat"],
+                    "platforms": ["zhihu"],
                     "source_platform": "wechat",
                     "article_markdown": (
                         "# 中国 AI 行业真正危险的不是模型暂时落后\n\n"
@@ -92,11 +92,11 @@ class ReleaseTests(unittest.TestCase):
                 },
                 config,
             )
-            platform_result = result["platform_results"][0]
+            platform_result = next(r for r in result["platform_results"] if r["platform"] != "wechat")
             saved_text = Path(platform_result["article_path"]).read_text(encoding="utf-8")
 
         self.assertEqual(mock_writer_turn.call_count, 1)
-        self.assertIn("观点讲完整", mock_writer_turn.call_args.args[0]["user_message"])
+        self.assertIn("Zhihu", mock_writer_turn.call_args.args[0]["user_message"])
         self.assertEqual(platform_result["final_decision"], "pass")
         self.assertTrue(platform_result["completeness_requirement_met"])
         self.assertGreaterEqual(platform_result["final_char_count"], 1200)
