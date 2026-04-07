@@ -335,11 +335,12 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
         )
 
     # Generate images once into shared directory, then rebuild all DOCX with images embedded
-    _generate_shared_images(shared_images_dir, packs_dir)
+    _generate_shared_images(shared_images_dir, packs_dir, config, article_markdown)
 
-    # Rebuild all platform DOCX with images now available
+    # Rebuild all platform DOCX with images now available (skip source — already built above)
     for pr in results:
-        platform_name = pr["platform_name"]
+        if pr["platform"] == source_platform:
+            continue
         pack_dir = packs_dir / platform_name
         tasks_path = pack_dir / "图片" / "生成任务.json"
         if not tasks_path.exists():
@@ -602,20 +603,41 @@ def _release_next_actions(results: list[dict[str, Any]]) -> list[str]:
     return actions
 
 
-def _generate_shared_images(shared_images_dir: Path, packs_dir: Path) -> None:
-    """Generate images once into the shared directory using the first available tasks file."""
+def _generate_shared_images(shared_images_dir: Path, packs_dir: Path, config: AppConfig, article_markdown: str) -> None:
+    """Generate AI images and collect public images into the shared directory."""
     generated_dir = shared_images_dir / "已生成"
-    if any(generated_dir.glob("*.jpg")) or any(generated_dir.glob("*.png")):
-        return  # Already have images
-    # Find any tasks file from the platform packs
-    for tasks_path in packs_dir.rglob("生成任务.json"):
-        try:
-            from .publish import render_packy_images
-            result = render_packy_images({"tasks_path": str(tasks_path)})
-            if result.get("status") == "completed":
-                return
-        except Exception:
-            continue
+    public_dir = shared_images_dir / "公开来源"
+
+    # Step 1: Generate AI images if not already present
+    if not any(generated_dir.glob("*.jpg")) and not any(generated_dir.glob("*.png")):
+        for tasks_path in packs_dir.rglob("生成任务.json"):
+            try:
+                from .publish import render_packy_images
+                result = render_packy_images({"tasks_path": str(tasks_path)})
+                if result.get("status") == "completed":
+                    break
+            except Exception:
+                continue
+
+    # Step 2: Collect public images if not already present
+    if not any(public_dir.glob("*.jpg")) and not any(public_dir.glob("*.png")):
+        for pack_dir in sorted(packs_dir.iterdir()):
+            if not pack_dir.is_dir():
+                continue
+            try:
+                from .public_images import collect_public_images
+                collect_public_images(
+                    {
+                        "output_dir": str(pack_dir),
+                        "article_markdown": article_markdown,
+                        "platform": "wechat",
+                    },
+                    config,
+                )
+                if any(public_dir.glob("*.jpg")) or any(public_dir.glob("*.png")):
+                    break
+            except Exception:
+                continue
 
 
 def _build_clean_delivery(
