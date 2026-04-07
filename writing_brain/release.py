@@ -334,6 +334,16 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
             }
         )
 
+    # Build clean delivery directory for the user
+    delivery_dir = _build_clean_delivery(
+        output_root=output_root,
+        source_platform=source_platform,
+        article_markdown=article_markdown,
+        results=results,
+        shared_images_dir=shared_images_dir,
+        packs_dir=packs_dir,
+    )
+
     summary = {
         "contract_name": "release_cycle_result",
         "contract_version": "v1",
@@ -341,6 +351,7 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
         "topic": topic,
         "source_platform": source_platform,
         "output_root": str(output_root),
+        "delivery_dir": str(delivery_dir),
         "platform_results": results,
         "recommended_next_actions": _release_next_actions(results),
     }
@@ -561,6 +572,64 @@ def _release_next_actions(results: list[dict[str, Any]]) -> list[str]:
     not_passed = [item["platform_name"] for item in results if item.get("final_decision") != "pass"]
     if not_passed:
         actions.append(f"这些平台稿还没通过 reviewer：{', '.join(not_passed)}。")
-    actions.append("为每个平台补齐公开渠道真实图片后，再刷新图文 DOCX。")
-    actions.append("全部平台核完后，再开始今天的新文章。")
+    actions.append("全部平台核完后，可直接从交付目录复制发布。")
     return actions
+
+
+def _build_clean_delivery(
+    *,
+    output_root: Path,
+    source_platform: str,
+    article_markdown: str,
+    results: list[dict[str, Any]],
+    shared_images_dir: Path,
+    packs_dir: Path,
+) -> Path:
+    """Build a flat, user-facing delivery directory.
+
+    Structure:
+        交付/
+        ├── 图片/
+        │   ├── 封面.jpg
+        │   ├── 配图-01.jpg
+        │   └── ...
+        ├── 公众号.docx
+        ├── 知乎.docx
+        └── ...
+    """
+    import shutil
+
+    delivery_dir = output_root / "交付"
+    delivery_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy shared images into a flat 图片/ directory
+    images_dir = delivery_dir / "图片"
+    images_dir.mkdir(exist_ok=True)
+    for source_dir in [shared_images_dir / "已生成", shared_images_dir / "公开来源"]:
+        if not source_dir.exists():
+            continue
+        for img_file in source_dir.iterdir():
+            if img_file.is_file() and img_file.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"}:
+                dest = images_dir / img_file.name
+                if not dest.exists():
+                    shutil.copy2(img_file, dest)
+
+    # Copy the rich DOCX for each platform with clean names
+    for pr in results:
+        platform = pr["platform"]
+        platform_name = pr["platform_name"]
+        pack_dir = packs_dir / platform_name
+        # Find the rich (图文) DOCX
+        rich_docx = None
+        for candidate in pack_dir.glob("*图文可发布*.docx"):
+            rich_docx = candidate
+            break
+        if rich_docx is None:
+            # Fallback to pure text DOCX
+            for candidate in pack_dir.glob("*纯文本*.docx"):
+                rich_docx = candidate
+                break
+        if rich_docx is not None:
+            shutil.copy2(rich_docx, delivery_dir / f"{platform_name}.docx")
+
+    return delivery_dir
