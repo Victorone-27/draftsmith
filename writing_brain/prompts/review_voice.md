@@ -37,3 +37,5 @@ problems: ["specific problem description"]
 - Every paragraph follows the mechanical structure of "X is important. Because Y. Therefore Z."
 - Ending with "总的来说" without giving the reader new cognition
 - Article body contains generation artifacts like "标题备选：" or "导语："
+- Three or more consecutive paragraphs following the same structural pattern (claim → evidence → conclusion, or question → answer → implication)
+- Using "毫无疑问", "众所周知", "事实上", "显而易见" as paragraph openers — these are high-frequency AI filler phrases

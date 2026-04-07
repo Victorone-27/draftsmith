@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -397,7 +398,30 @@ def _polish_article_text(text: str, *, assignment: dict[str, Any], blueprint: di
         paragraphs[0] = f"# {assignment['title']}"
     if len(paragraphs) >= 2 and blueprint["main_claim"] not in paragraphs[1]:
         paragraphs.insert(1, blueprint["main_claim"])
-    return "\n\n".join(paragraphs).strip()
+    cleaned = "\n\n".join(paragraphs).strip()
+    if not bool(os.environ.get("WRITING_BRAIN_ENABLE_VOICE_POLISH", "")):
+        return cleaned
+    try:
+        from ..writer import run_writer_turn
+        from ..config import AppConfig as _Cfg
+        voice_turn = run_writer_turn(
+            {
+                "task_mode": "revise",
+                "current_draft": cleaned,
+                "user_message": (
+                    "Polish the voice only. Remove filler phrases, fix structural monotony, "
+                    "vary paragraph rhythm. Do not change arguments, evidence, or judgments. "
+                    "Output the article in Chinese."
+                ),
+                "force_prompt_only": bool(os.environ.get("WRITING_BRAIN_FORCE_PROMPT_ONLY", "")),
+            },
+            _Cfg(data_dir=Path(os.environ.get("WRITING_BRAIN_DATA_DIR", ""))),
+        )
+        if voice_turn.get("mode") == "model_output" and voice_turn.get("reply_text", "").strip():
+            return voice_turn["reply_text"].strip()
+    except Exception:
+        pass
+    return cleaned
 
 
 def _persist_session_artifacts(

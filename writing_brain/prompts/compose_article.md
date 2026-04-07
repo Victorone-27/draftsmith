@@ -47,4 +47,13 @@ Output the complete article in Markdown directly. Do not wrap in code blocks. Do
 
 - Do not output writing notes, revision logs, or self-evaluation
 - Do not write meta-narration like "according to the blueprint" or "as required" in the article body
-- Do not use filler transitions like "值得注意的是", "不难发现", "总的来说"
+- Do not use filler transitions like "值得注意的是", "不难发现", "总的来说", "毫无疑问", "众所周知", "事实上", "显而易见"
+
+## Anti-patterns to avoid
+
+- Do not start consecutive paragraphs with the same sentence structure
+- Do not use "X is important because Y" as a repeated paragraph template
+- Do not write transitions that add no information ("With that said", "Moving on", "It's worth noting")
+- Do not end paragraphs with vague forward-references ("This has profound implications", "The consequences are far-reaching")
+- Do not use paired contrasts as filler ("It's not just X, it's also Y" without explaining why Y matters)
+- Vary paragraph length — mix 1-sentence punches with 3-4 sentence developments

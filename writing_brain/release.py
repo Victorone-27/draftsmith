@@ -69,7 +69,7 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
                 "platform": platform,
                 "user_goal": str(payload.get("user_goal") or source_context.get("user_goal") or "").strip(),
                 "audience": str(payload.get("audience") or source_context.get("audience") or "").strip(),
-                "tone_target": str(payload.get("tone_target") or source_context.get("tone_target") or "锋利但克制").strip(),
+                "tone_target": str(payload.get("tone_target") or source_context.get("tone_target") or "Sharp but restrained").strip(),
                 "must_cover_points": list(source_context.get("must_cover_points") or payload.get("must_cover_points") or []),
                 "style_rules": list(source_context.get("style_rules") or payload.get("style_rules") or []),
                 "platform_rules": list(payload.get("platform_rule_overrides") or []),
@@ -252,11 +252,6 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
                 "use_image_governance_review": payload.get("use_image_governance_review"),
             },
             config,
-        )
-        _write_submission_files(
-            platform=platform,
-            article_markdown=platform_article,
-            output_dir=packs_dir / platform_name,
         )
 
         results.append(
@@ -495,62 +490,6 @@ def _apply_completeness_guard(
     return next_report
 
 
-def _write_submission_files(*, platform: str, article_markdown: str, output_dir: Path) -> None:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    title = _extract_title(article_markdown)
-    summary = _article_summary(article_markdown)
-    intro = _opening_intro(article_markdown)
-    tags = _recommended_tags(platform, article_markdown)
-
-    strategy = "\n".join(
-        [
-            "# 投递策略",
-            "",
-            "## 标题 A/B/C",
-            "",
-            f"- A：{title}",
-            f"- B：{_alt_title(title, style='question')}",
-            f"- C：{_alt_title(title, style='conflict')}",
-            "",
-            "## 推荐标签",
-            "",
-            *[f"- `{tag}`" for tag in tags],
-            "",
-            "## 推荐发布时间",
-            "",
-            "- 工作日晚间 20:00-22:00",
-            "- 周日上午 10:00-11:30",
-            "",
-            "## 开头导语",
-            "",
-            intro,
-            "",
-            "## 结尾 CTA",
-            "",
-            _closing_cta(platform),
-        ]
-    )
-    template = "\n".join(
-        [
-            "# 投稿问题-填写模板",
-            "",
-            "## 文章摘要",
-            "",
-            summary,
-            "",
-            "## 适合谁看",
-            "",
-            *[f"- {item}" for item in _audience_bullets(platform)],
-            "",
-            "## 读者能得到什么",
-            "",
-            *[f"- {item}" for item in _reader_value_bullets(platform)],
-        ]
-    )
-    (output_dir / "投递策略.md").write_text(strategy + "\n", encoding="utf-8")
-    (output_dir / "投稿问题-填写模板.md").write_text(template + "\n", encoding="utf-8")
-
-
 def _extract_title(article_markdown: str) -> str:
     for paragraph in split_paragraphs(article_markdown):
         if paragraph.startswith("# "):
@@ -559,58 +498,6 @@ def _extract_title(article_markdown: str) -> str:
         if stripped:
             return stripped[:80]
     return "未命名文章"
-
-
-def _article_summary(article_markdown: str) -> str:
-    paragraphs = [compact_whitespace(item) for item in split_paragraphs(article_markdown) if not item.startswith("#")]
-    if not paragraphs:
-        return "围绕当前主题输出了一版可发布文章。"
-    return " ".join(paragraphs[:2])[:220]
-
-
-def _opening_intro(article_markdown: str) -> str:
-    paragraphs = [compact_whitespace(item) for item in split_paragraphs(article_markdown) if not item.startswith("#")]
-    return paragraphs[0] if paragraphs else "这篇文章试图把一个正在发生但还没被充分说清的变化讲清楚。"
-
-
-def _alt_title(title: str, *, style: str) -> str:
-    if style == "question":
-        return f"{title}，为什么现在更值得警惕？"
-    return f"{title}：真正危险的不是表面看到的那一层"
-
-
-def _recommended_tags(platform: str, article_markdown: str) -> list[str]:
-    tags = ["AI", "行业观察"]
-    lower = article_markdown.lower()
-    if "产品" in article_markdown:
-        tags.append("产品经理")
-    if "组织" in article_markdown or "公司" in article_markdown:
-        tags.append("组织变化")
-    if "模型" in article_markdown:
-        tags.append("模型能力")
-    if platform in {"csdn", "juejin"}:
-        tags.append("技术趋势")
-    return tags[:5]
-
-
-def _closing_cta(platform: str) -> str:
-    if platform == "xiaohongshu":
-        return "你更担心自己跟不上工具，还是更担心自己只剩工具？评论区聊聊。"
-    return "你怎么看这条变化？欢迎留言说说你的判断和反例。"
-
-
-def _audience_bullets(platform: str) -> list[str]:
-    common = ["产品、运营、开发和创始人", "关心 AI 行业变化的人"]
-    if platform == "xiaohongshu":
-        return ["年轻职场人", "正在学习 AI 工具的人", *common]
-    return common
-
-
-def _reader_value_bullets(platform: str) -> list[str]:
-    values = ["获得一条更清晰的判断", "理解平台或行业变化背后的结构性原因"]
-    if platform in {"csdn", "juejin"}:
-        values.append("拿到更可讨论的方法和框架")
-    return values
 
 
 def _release_next_actions(results: list[dict[str, Any]]) -> list[str]:

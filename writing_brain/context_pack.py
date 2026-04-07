@@ -18,16 +18,48 @@ DEFAULT_STYLE_RULES = [
 
 DEFAULT_PLATFORM_RULES = {
     "wechat": [
-        "WeChat articles must present the core judgment in the first screen",
-        "Do not end with sloganeering",
+        "First screen must present the core judgment — no background preamble",
+        "Do not end with sloganeering or vague calls to action",
+        "Use natural paragraph flow, not numbered lists or subheadings",
+        "Keep paragraphs under 4 sentences for mobile reading rhythm",
     ],
     "xiaohongshu": [
-        "Open more directly with shorter paragraphs",
-        "Do not write in long-essay academic style",
+        "First sentence must hook — use a surprising claim or direct question",
+        "Keep paragraphs to 1-2 sentences maximum",
+        "Use conversational tone — write like talking to a friend, not lecturing",
+        "Avoid academic structure — no 'firstly/secondly/finally'",
+        "End with a question that invites comments",
     ],
     "zhihu": [
-        "Provide clearer problem definition and method exposition",
-        "Spell out boundary conditions explicitly",
+        "Open with a clear problem definition — what exactly is being answered",
+        "Spell out boundary conditions and applicability limits explicitly",
+        "Include method exposition with concrete steps, not just opinions",
+        "Use evidence and counterexamples to build credibility",
+        "Longer, more analytical paragraphs are acceptable",
+    ],
+    "toutiao": [
+        "Open with the most newsworthy or contrarian claim",
+        "State judgments in absolute terms — hedging loses readers",
+        "Keep information density high — every paragraph must add new information",
+        "Use short paragraphs and clear topic sentences",
+    ],
+    "csdn": [
+        "Structure like a technical analysis — problem, approach, implementation, evaluation",
+        "Include framework names, version numbers, and concrete technical references",
+        "Add code-adjacent thinking — how would an engineer act on this",
+        "Use markdown subheadings to organize sections clearly",
+    ],
+    "juejin": [
+        "Write like a senior practitioner sharing hard-won lessons",
+        "Include specific scenarios and decision points from real projects",
+        "Balance opinion with practical takeaways the reader can use tomorrow",
+        "Use a direct, peer-to-peer tone — not authoritative or academic",
+    ],
+    "renrendoushichanpinjingli": [
+        "Frame everything through product thinking — user needs, trade-offs, metrics",
+        "Include organizational context — team dynamics, stakeholder management",
+        "Provide actionable frameworks or mental models, not just observations",
+        "Use case studies or scenario analysis to illustrate points",
     ],
 }
 

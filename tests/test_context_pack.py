@@ -153,7 +153,7 @@ usable_for:
             )
             self.assertEqual(result["platform"], "zhihu")
             self.assertEqual(result["target_platforms"], ["zhihu"])
-            self.assertIn("Spell out boundary conditions explicitly", result["platform_rules"])
+            self.assertIn("Spell out boundary conditions and applicability limits explicitly", result["platform_rules"])
 
 
 if __name__ == "__main__":
