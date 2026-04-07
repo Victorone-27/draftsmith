@@ -334,6 +334,32 @@ def run_release_cycle(payload: dict[str, Any], config: AppConfig) -> dict[str, A
             }
         )
 
+    # Generate images once into shared directory, then rebuild all DOCX with images embedded
+    _generate_shared_images(shared_images_dir, packs_dir)
+
+    # Rebuild all platform DOCX with images now available
+    for pr in results:
+        platform_name = pr["platform_name"]
+        pack_dir = packs_dir / platform_name
+        tasks_path = pack_dir / "图片" / "生成任务.json"
+        if not tasks_path.exists():
+            continue
+        build_publish_pack(
+            {
+                "title": _extract_title(pr.get("article_markdown") or article_markdown),
+                "topic": topic,
+                "platform": pr["platform"],
+                "article_markdown": pr.get("article_markdown") or article_markdown,
+                "output_dir": str(pack_dir),
+                "image_count": int(payload.get("image_count") or 3),
+                "shared_image_dirs": {
+                    "generated": str(shared_images_dir / "已生成"),
+                    "public": str(shared_images_dir / "公开来源"),
+                },
+            },
+            config,
+        )
+
     # Build clean delivery directory for the user
     delivery_dir = _build_clean_delivery(
         output_root=output_root,
@@ -574,6 +600,22 @@ def _release_next_actions(results: list[dict[str, Any]]) -> list[str]:
         actions.append(f"这些平台稿还没通过 reviewer：{', '.join(not_passed)}。")
     actions.append("全部平台核完后，可直接从交付目录复制发布。")
     return actions
+
+
+def _generate_shared_images(shared_images_dir: Path, packs_dir: Path) -> None:
+    """Generate images once into the shared directory using the first available tasks file."""
+    generated_dir = shared_images_dir / "已生成"
+    if any(generated_dir.glob("*.jpg")) or any(generated_dir.glob("*.png")):
+        return  # Already have images
+    # Find any tasks file from the platform packs
+    for tasks_path in packs_dir.rglob("生成任务.json"):
+        try:
+            from .publish import render_packy_images
+            result = render_packy_images({"tasks_path": str(tasks_path)})
+            if result.get("status") == "completed":
+                return
+        except Exception:
+            continue
 
 
 def _build_clean_delivery(
