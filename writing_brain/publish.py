@@ -834,16 +834,34 @@ def _public_search_query(*, topic: str, snippet: str) -> str:
     normalized = combined.lower()
 
     if any(token in normalized for token in ["老板", "企业", "预算", "管理", "协同", "流程", "组织", "boss", "enterprise", "budget", "management"]):
-        return "business meeting executives office teamwork"
-    if any(token in normalized for token in ["agent", "ai", "人工智能", "模型", "prompt", "智能体", "artificial intelligence"]):
-        return "AI artificial intelligence conference business"
-    if any(token in normalized for token in ["团队", "协作", "办公室", "会议", "team", "collaboration", "office"]):
-        return "technology team office meeting"
+        base = "business meeting executives"
+    elif any(token in normalized for token in ["agent", "ai", "人工智能", "模型", "prompt", "智能体", "artificial intelligence"]):
+        base = "AI artificial intelligence"
+    elif any(token in normalized for token in ["团队", "协作", "办公室", "会议", "team", "collaboration", "office"]):
+        base = "technology team office"
+    else:
+        short_topic = _compact_public_query_fragment(topic, limit=12)
+        base = f"{short_topic} business team" if short_topic else "business office teamwork"
 
-    short_topic = _compact_public_query_fragment(topic, limit=12)
-    if short_topic:
-        return f"{short_topic} business team meeting real photo"[:72]
-    return "business office teamwork meeting"
+    snippet_kw = _extract_snippet_keywords(snippet, base=base, limit=4)
+    return f"{base} {snippet_kw}".strip()[:72]
+
+
+def _extract_snippet_keywords(snippet: str, *, base: str, limit: int) -> str:
+    normalized = re.sub(r"[*_`#>\[\]\(\)，。；：、\u201c\u201d\u2018\u2019！？\s]+", " ", snippet or "")
+    base_lower = base.lower()
+    stop = {"的", "了", "在", "是", "和", "与", "或", "不", "也", "都", "就", "而", "但", "从", "到", "对", "为", "被", "把", "让", "给", "向", "以", "及", "等", "这", "那", "它", "他", "她", "我", "你", "们", "个", "一", "上", "下", "中", "有", "没", "会", "能", "要", "可", "很", "更", "最", "已", "还", "又", "再", "才", "只", "如", "所", "其", "之", "the", "a", "an", "is", "are", "was", "were", "of", "in", "to", "and", "or", "for", "on", "at", "by", "with", "that", "this", "it", "not", "be", "as", "but", "from"}
+    words = normalized.split()
+    keywords: list[str] = []
+    for w in words:
+        w = w.strip()
+        if len(w) < 2 or w.lower() in stop or w.lower() in base_lower:
+            continue
+        if w not in keywords:
+            keywords.append(w)
+        if len(keywords) >= limit:
+            break
+    return " ".join(keywords)
 
 
 def _compact_public_query_fragment(text: str, *, limit: int) -> str:

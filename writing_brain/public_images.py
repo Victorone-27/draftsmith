@@ -107,10 +107,11 @@ def _collect_for_single_pack(payload: dict[str, Any], config: AppConfig, *, outp
 
     slots = _parse_public_leads(leads_path)
     existing_index = read_image_index(index_path)
+    used_urls: set[str] = set()
     results: list[dict[str, Any]] = []
     for slot in slots:
         try:
-            result = _fetch_slot_image(slot=slot, public_dir=public_dir, existing_index=existing_index)
+            result = _fetch_slot_image(slot=slot, public_dir=public_dir, existing_index=existing_index, used_urls=used_urls)
         except Exception as exc:
             result = {
                 "filename": slot["filename"],
@@ -118,6 +119,8 @@ def _collect_for_single_pack(payload: dict[str, Any], config: AppConfig, *, outp
                 "error": str(exc),
                 "query": slot["query"],
             }
+        if result.get("download_url"):
+            used_urls.add(result["download_url"])
         results.append(result)
 
     _write_public_index(path=index_path, existing_index=existing_index, results=results)
@@ -194,7 +197,7 @@ def _parse_public_leads(path: Path) -> list[dict[str, str]]:
     return [slot for slot in slots if slot.get("filename") and slot.get("query")]
 
 
-def _fetch_slot_image(*, slot: dict[str, str], public_dir: Path, existing_index: dict[str, Any]) -> dict[str, Any]:
+def _fetch_slot_image(*, slot: dict[str, str], public_dir: Path, existing_index: dict[str, Any], used_urls: set[str] | None = None) -> dict[str, Any]:
     filename = slot["filename"]
     query = slot["query"]
     existing_path = _existing_image_path(public_dir, filename)
@@ -225,9 +228,14 @@ def _fetch_slot_image(*, slot: dict[str, str], public_dir: Path, existing_index:
         filtered = _filter_relevant_candidates(candidates, slot=slot, query=candidate_query)
         if not filtered:
             continue
-        chosen = filtered[0]
-        used_query = candidate_query
-        break
+        for candidate in filtered:
+            if used_urls and candidate.get("download_url") in used_urls:
+                continue
+            chosen = candidate
+            break
+        if chosen:
+            used_query = candidate_query
+            break
     if not chosen:
         return {
             "filename": filename,

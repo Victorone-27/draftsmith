@@ -53,12 +53,13 @@ def _write_generated_index(output_dir: Path) -> None:
 def _mock_search(query: str) -> list[dict[str, str]]:
     return [
         {
-            "title": f"{query[:18]} 图",
-            "page_url": f"https://commons.wikimedia.org/wiki/{abs(hash(query))}",
-            "download_url": "https://upload.wikimedia.org/mock-image.png",
+            "title": f"{query[:18]} pic-{i}",
+            "page_url": f"https://commons.wikimedia.org/wiki/{abs(hash(query))}_{i}",
+            "download_url": f"https://upload.wikimedia.org/mock-image-{abs(hash(query))}-{i}.png",
             "license": "CC BY-SA 4.0",
             "author": "Mock Author",
         }
+        for i in range(3)
     ]
 
 
@@ -145,7 +146,7 @@ class PublicImageTests(unittest.TestCase):
 
         self.assertLessEqual(len(query), 72)
         self.assertIn("AI", query)
-        self.assertTrue("conference" in query or "business" in query)
+        self.assertTrue("AI" in query or "artificial intelligence" in query.lower())
         self.assertNotIn("在 Prompt 撰写规范上，应要求团队剥离文学修辞", query)
 
     def test_query_variants_for_commons_adds_fallbacks(self) -> None:
